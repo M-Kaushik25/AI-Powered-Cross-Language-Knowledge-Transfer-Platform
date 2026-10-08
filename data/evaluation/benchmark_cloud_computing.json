@@ -1,0 +1,117 @@
+{
+  "domain": "cloud_computing",
+  "domain_display": "Cloud Computing & Distributed Systems",
+  "description": "Gold standard bilingual evaluation benchmark for Cloud & Distributed Systems terminology transfer",
+  "items": [
+    {
+      "id": "cloud_001",
+      "source_en": "Fault tolerance is essential for modern cloud infrastructure to prevent downtime.",
+      "terms": ["fault tolerance"],
+      "gold_translations": {
+        "hi": "त्रुटि सहिष्णुता आधुनिक क्लाउड इंफ्रास्ट्रक्चर के लिए डाउनटाइम को रोकने के लिए आवश्यक है।",
+        "ta": "வேலையில்லா நேரத்தைத் தடுக்க நவீன கிளவுட் உள்கட்டமைப்பிற்கு பிழை சகிப்புத்தன்மை அவசியம்.",
+        "de": "Fehlertoleranz ist für moderne Cloud-Infrastrukturen unerlässlich, um Ausfallzeiten zu verhindern.",
+        "es": "La tolerancia a fallos es esencial para la infraestructura de nube moderna para evitar tiempos de inactividad."
+      }
+    },
+    {
+      "id": "cloud_002",
+      "source_en": "A reliable load balancer manages traffic distribution and horizontal scaling across clusters.",
+      "terms": ["load balancer", "horizontal scaling"],
+      "gold_translations": {
+        "hi": "एक विश्वसनीय लोड बैलेंसर क्लस्टर में ट्रैफ़िक वितरण और क्षैतिज स्केलिंग का प्रबंधन करता है।",
+        "ta": "நம்பகமான சுமை சமநிலைப்படுத்தி கிளஸ்டர்கள் முழுவதும் போக்குவரத்து விநியோகம் மற்றும் கிடைமட்ட அளவிடுதலை நிர்வகிக்கிறது.",
+        "de": "Ein zuverlässiger Lastverteiler verwaltet die Lastverteilung und horizontale Skalierung über Cluster hinweg.",
+        "es": "Un balanceador de carga confiable gestiona la distribución del tráfico y el escalado horizontal entre clústeres."
+      }
+    },
+    {
+      "id": "cloud_003",
+      "source_en": "Implementing a circuit breaker pattern avoids cascading failures under eventual consistency.",
+      "terms": ["circuit breaker", "eventual consistency"],
+      "gold_translations": {
+        "hi": "सर्किट ब्रेकर पैटर्न को लागू करने से अंतिम संगति के तहत व्यापक विफलताओं से बचा जा सकता है।",
+        "ta": "மின்சுற்று முறிப்பான் முறை செயல்படுத்துவது இறுதி நிலைத்தன்மையின் கீழ் தொடர் தோல்விகளைத் தவிர்க்கிறது.",
+        "de": "Die Implementierung eines Schutzschalter-Musters verhindert kaskadierende Ausfälle bei Eventual Consistency.",
+        "es": "La implementación de un patrón disyuntor evita fallos en cascada bajo consistencia eventual."
+      }
+    },
+    {
+      "id": "cloud_004",
+      "source_en": "Container orchestration platforms enforce strict rate limiting and service mesh routing.",
+      "terms": ["container orchestration", "rate limiting", "service mesh"],
+      "gold_translations": {
+        "hi": "कंटेनर ऑर्केस्ट्रेशन प्लेटफॉर्म सख्त दर सीमांकन और सेवा जाल रूटिंग लागू करते हैं।",
+        "ta": "கன்டெய்னர் ஆர்கெஸ்ட்ரேஷன் தளங்கள் கடுமையான விகித வரம்பு மற்றும் சேவை வலைப்பின்னல் வழியமைப்பை செயல்படுத்துகின்றன.",
+        "de": "Container-Orchestrierungsplattformen erzwingen strenge Ratenbegrenzung und Service-Mesh-Routing.",
+        "es": "Las plataformas de orquestación de contenedores aplican una limitación de tasa estricta y enrutamiento de malla de servicios."
+      }
+    },
+    {
+      "id": "cloud_005",
+      "source_en": "Operations must guarantee idempotency to handle dead-letter queue retries effectively.",
+      "terms": ["idempotency", "dead-letter queue"],
+      "gold_translations": {
+        "hi": "असंसाधित संदेश पंक्ति के पुनः प्रयासों को प्रभावी ढंग से संभालने के लिए संचालन को समसामयिकता की गारंटी देनी चाहिए।",
+        "ta": "செயலாக்க முடியாத செய்தி வரிசை மறுமுயற்சிகளை திறம்பட கையாள செயல்பாடுகள் மாறா விளைவுத்தன்மையை உறுதி செய்ய வேண்டும்.",
+        "de": "Operationen müssen Idempotenz garantieren, um Wiederholungsversuche in der Dead-Letter-Warteschlange effektiv zu verwalten.",
+        "es": "Las operaciones deben garantizar idempotencia para manejar los reintentos de la cola de mensajes no entregados eficazmente."
+      }
+    },
+    {
+      "id": "cloud_006",
+      "source_en": "Cache invalidation remains a major hurdle during high throughput consensus protocol execution.",
+      "terms": ["cache invalidation", "consensus protocol"],
+      "gold_translations": {
+        "hi": "उच्च थ्रूपुट सर्वसम्मति प्रोटोकॉल निष्पादन के दौरान कैश अमान्यकरण एक बड़ी बाधा बनी हुई है।",
+        "ta": "அதிவேக ஒருமித்த நெறிமுறை செயல்பாட்டின் போது தற்காலிக நினைவக செல்லாததாக்கல் ஒரு முக்கிய தடையாக உள்ளது.",
+        "de": "Cache-Invalidierung bleibt eine große Hürde bei der Ausführung von Konsensprotokollen mit hohem Durchsatz.",
+        "es": "La invalidación de caché sigue siendo un obstáculo importante durante la ejecución del protocolo de consenso de alto rendimiento."
+      }
+    },
+    {
+      "id": "cloud_007",
+      "source_en": "Horizontal scaling requires an automated load balancer to route requests to healthy nodes.",
+      "terms": ["horizontal scaling", "load balancer"],
+      "gold_translations": {
+        "hi": "क्षैतिज स्केलिंग के लिए स्वस्थ नोड्स पर अनुरोध रूट करने के लिए एक स्वचालित लोड बैलेंसर की आवश्यकता होती है।",
+        "ta": "கிடைமட்ட அளவிடுதலுக்கு ஆரோக்கியமான முனைகளுக்கு கோரிக்கைகளை அனுப்ப ஒரு தானியங்கி சுமை சமநிலைப்படுத்தி தேவைப்படுகிறது.",
+        "de": "Horizontale Skalierung erfordert einen automatisierten Lastverteiler, um Anfragen an fehlerfreie Knoten weiterzuleiten.",
+        "es": "El escalado horizontal requiere un balanceador de carga automatizado para enrutar solicitudes a nodos en buen estado."
+      }
+    },
+    {
+      "id": "cloud_008",
+      "source_en": "A distributed consensus protocol provides fault tolerance in decentralized storage.",
+      "terms": ["consensus protocol", "fault tolerance"],
+      "gold_translations": {
+        "hi": "एक वितरित सर्वसम्मति प्रोटोकॉल विकेंद्रीकृत भंडारण में त्रुटि सहिष्णुता प्रदान करता है।",
+        "ta": "ஒருங்கிணைந்த ஒருமித்த நெறிமுறை பரவலாக்கப்பட்ட சேமிப்பகத்தில் பிழை சகிப்புத்தன்மையை வழங்குகிறது.",
+        "de": "Ein verteiltes Konsensprotokoll bietet Fehlertoleranz in dezentralen Speichern.",
+        "es": "Un protocolo de consenso distribuido proporciona tolerancia a fallos en el almacenamiento descentralizado."
+      }
+    },
+    {
+      "id": "cloud_009",
+      "source_en": "The service mesh manages proxy communication to safeguard eventual consistency across microservices.",
+      "terms": ["service mesh", "eventual consistency"],
+      "gold_translations": {
+        "hi": "सेवा जाल माइक्रोसेवाओं में अंतिम संगति की सुरक्षा के लिए प्रॉक्सी संचार का प्रबंधन करता है।",
+        "ta": "சேவை வலைப்பின்னல் மைக்ரோ சர்வீஸ்களில் இறுதி நிலைத்தன்மையை பாதுகாக்க ப்ராக்ஸி தொடர்புகளை நிர்வகிக்கிறது.",
+        "de": "Das Service-Mesh verwaltet die Proxy-Kommunikation, um Eventual Consistency über Microservices hinweg abzusichern.",
+        "es": "La malla de servicios gestiona la comunicación proxy para salvaguardar la consistencia eventual en microservicios."
+      }
+    },
+    {
+      "id": "cloud_010",
+      "source_en": "Applying idempotency to transactional messages avoids duplicate processing in the queue.",
+      "terms": ["idempotency"],
+      "gold_translations": {
+        "hi": "लेन-देन संदेशों पर समसामयिकता लागू करने से कतार में डुप्लिकेट प्रसंस्करण से बचा जाता है।",
+        "ta": "பரிவர்த்தனை செய்திகளுக்கு மாறா விளைவுத்தன்மையை பயன்படுத்துவது வரிசையில் நகல் செயலாக்கத்தை தவிர்க்கிறது.",
+        "de": "Die Anwendung von Idempotenz auf transaktionale Nachrichten verhindert eine doppelte Verarbeitung in der Warteschlange.",
+        "es": "La aplicación de idempotencia a los mensajes transaccionales evita el procesamiento duplicado en la cola."
+      }
+    }
+  ]
+}

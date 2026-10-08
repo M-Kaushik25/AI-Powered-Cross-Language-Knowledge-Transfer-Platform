@@ -1,7 +1,8 @@
 import json
 import uuid
 import re
-from datetime import datetime
+import math
+from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 from backend.database import get_db
 
@@ -257,6 +258,21 @@ SEED_TERMS = [
 ]
 
 
+SEED_RELATIONSHIPS = [
+    ("circuit breaker", "fault tolerance", "SUBCLASS_OF", 0.98),
+    ("load balancer", "fault tolerance", "CONTEXT_OF", 0.95),
+    ("dead-letter queue", "circuit breaker", "CONTEXT_OF", 0.92),
+    ("consensus protocol", "fault tolerance", "CONTEXT_OF", 0.96),
+    ("horizontal scaling", "load balancer", "CONTEXT_OF", 0.94),
+    ("service mesh", "circuit breaker", "CONTEXT_OF", 0.93),
+    ("idempotency", "fault tolerance", "CONTEXT_OF", 0.95),
+    ("cache invalidation", "eventual consistency", "CONTEXT_OF", 0.91),
+    ("tidal volume", "mechanical ventilator", "SUBCLASS_OF", 0.97),
+    ("positive end-expiratory pressure", "mechanical ventilator", "SUBCLASS_OF", 0.96),
+    ("arterial blood pressure", "hemodynamic monitoring", "SUBCLASS_OF", 0.98),
+    ("pulse oximeter", "hemodynamic monitoring", "CONTEXT_OF", 0.95),
+]
+
 class KnowledgeGraphService:
     def __init__(self):
         from backend.database import init_db
@@ -264,12 +280,13 @@ class KnowledgeGraphService:
         self.seed_database_if_empty()
 
     def seed_database_if_empty(self):
+        from backend.database import get_utc_now_iso
+        now = get_utc_now_iso()
         with get_db() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT COUNT(*) as count FROM terms")
             count = cursor.fetchone()["count"]
             if count == 0:
-                now = datetime.utcnow().isoformat()
                 for item in SEED_TERMS:
                     term_id = str(uuid.uuid4())
                     cursor.execute("""
@@ -295,6 +312,21 @@ class KnowledgeGraphService:
                         json.dumps(item["translations"], ensure_ascii=False),
                         now
                     ))
+
+            # Seed ontological relationships if empty
+            cursor.execute("SELECT COUNT(*) as rel_count FROM term_relationships")
+            rel_count = cursor.fetchone()["rel_count"]
+            if rel_count == 0:
+                for src_name, tgt_name, rel_type, rel_conf in SEED_RELATIONSHIPS:
+                    cursor.execute("SELECT id FROM terms WHERE source_term = ?", (src_name.lower(),))
+                    src_row = cursor.fetchone()
+                    cursor.execute("SELECT id FROM terms WHERE source_term = ?", (tgt_name.lower(),))
+                    tgt_row = cursor.fetchone()
+                    if src_row and tgt_row:
+                        cursor.execute("""
+                            INSERT INTO term_relationships (id, source_term_id, target_term_id, relation_type, confidence, created_at)
+                            VALUES (?, ?, ?, ?, ?, ?)
+                        """, (str(uuid.uuid4()), src_row["id"], tgt_row["id"], rel_type, rel_conf, now))
 
     def get_all_terms(self, domain: Optional[str] = None, search: Optional[str] = None) -> List[Dict[str, Any]]:
         with get_db() as conn:
@@ -333,7 +365,8 @@ class KnowledgeGraphService:
         """
         Auto-extracts candidate domain terms from text:
         1. Identifies existing approved Knowledge Graph terms in the text.
-        2. Detects new uncataloged technical acronyms and multi-word candidates using POS/pattern heuristics.
+        2. Detects new uncataloged technical acronyms (e.g. ACID, SLA, PEEP).
+        3. Extracts multi-word technical compounds and noun phrases using linguistic patterns & C-Value ranking.
         """
         text_lower = text.lower()
         candidates = []
@@ -365,8 +398,11 @@ class KnowledgeGraphService:
                     seen_terms.add(st)
 
         # Step 2: Extract uppercase acronyms (e.g., PEEP, REST, ACID, SLO, SLA, MTBF)
-        acronym_matches = re.findall(r'\b[A-Z]{3,6}\b', text)
+        acronym_matches = re.findall(r'\b[A-Z]{2,6}\b', text)
+        stop_acronyms = {"THE", "AND", "FOR", "NOT", "ALL", "NEW", "ANY"}
         for acr in set(acronym_matches):
+            if acr in stop_acronyms:
+                continue
             acr_low = acr.lower()
             if acr_low not in seen_terms:
                 candidates.append({
@@ -376,11 +412,75 @@ class KnowledgeGraphService:
                     "definition": f"Extracted technical acronym ({acr})",
                     "translations": {"hi": acr, "ta": acr, "de": acr, "es": acr},
                     "version": 0,
-                    "confidence": 0.70,
+                    "confidence": 0.75,
                     "occurrences": text.count(acr),
                     "is_new": True
                 })
                 seen_terms.add(acr_low)
+
+        # Step 3: Linguistic Noun-Phrase & Compound Term Extraction with C-Value Scoring
+        # Technical adjective and noun modifiers
+        tech_modifiers = {
+            "distributed", "concurrent", "stateless", "stateful", "asynchronous",
+            "synchronous", "byzantine", "fault", "load", "dead", "consensus",
+            "cache", "service", "event", "stream", "micro", "neural", "biomedical",
+            "arterial", "cardiac", "continuous", "active", "passive", "immutable",
+            "eventual", "high", "low", "dynamic", "static", "resilient"
+        }
+        tech_head_suffixes = (
+            "tion", "sion", "ment", "ance", "ence", "ity", "ing", "er", "or",
+            "ism", "ics", "logy", "ware", "base", " mesh", " queue", " pool"
+        )
+        tech_stop_words = {
+            "this", "that", "these", "those", "each", "every", "some", "many",
+            "more", "most", "such", "other", "another", "good", "great", "high level"
+        }
+
+        # Match 2-word and 3-word potential candidate phrases: [Modifier]+ [Head]
+        words = re.findall(r'\b[a-zA-Z\-]{3,}\b', text_lower)
+        phrase_counts: Dict[str, int] = {}
+
+        # 2-grams
+        for i in range(len(words) - 1):
+            w1, w2 = words[i], words[i + 1]
+            if w1 in tech_modifiers or any(w2.endswith(sfx) for sfx in tech_head_suffixes):
+                phrase = f"{w1} {w2}"
+                if phrase not in tech_stop_words:
+                    phrase_counts[phrase] = phrase_counts.get(phrase, 0) + 1
+
+        # Hyphenated compounds (e.g., dead-letter, zero-trust, round-robin)
+        hyphen_matches = re.findall(r'\b[a-zA-Z]{3,}-[a-zA-Z]{3,}\b', text_lower)
+        for h in hyphen_matches:
+            if h not in tech_stop_words:
+                phrase_counts[h] = phrase_counts.get(h, 0) + 1
+
+        # C-Value calculation for multi-word phrases: C-Value = log2(|phrase| + 1) * freq
+        for phrase, freq in phrase_counts.items():
+            if phrase in seen_terms:
+                continue
+            
+            # Check if phrase is substring of already seen known term
+            if any(phrase in st for st in seen_terms):
+                continue
+
+            word_len = len(phrase.split())
+            c_value = math.log2(word_len + 1) * freq
+            
+            # Filter threshold: minimum C-Value of 1.0
+            if c_value >= 1.0:
+                conf = round(min(0.85, 0.60 + 0.05 * c_value), 2)
+                candidates.append({
+                    "id": None,
+                    "source_term": phrase,
+                    "domain": domain,
+                    "definition": f"Candidate multi-word term extracted via C-Value analysis ({c_value:.2f})",
+                    "translations": {},
+                    "version": 0,
+                    "confidence": conf,
+                    "occurrences": freq,
+                    "is_new": True
+                })
+                seen_terms.add(phrase)
 
         return sorted(candidates, key=lambda x: (not x["is_new"], -x["occurrences"]))
 
@@ -443,19 +543,34 @@ class KnowledgeGraphService:
         corrected_translation: str,
         domain: str = "cloud_computing",
         reviewer_notes: str = "Human expert review update",
-        term_id: Optional[str] = None
+        term_id: Optional[str] = None,
+        reviewer_id: str = "SYSTEM_REVIEWER",
+        reviewer_role: str = "REVIEWER",
+        target_confidence: Optional[float] = None
     ) -> Dict[str, Any]:
         """
-        SELF-EVOLUTION CORE:
-        Applies a human correction to the Living Terminology Knowledge Graph:
+        CONTROLLED KG UPDATE WITH ANTI-POISONING:
+        Applies a verified human correction to the Living Terminology Knowledge Graph:
+        - Validates input format and cleans target term
         - Increments version number (v -> v+1)
-        - Updates approved translation
-        - Sets confidence to 1.0 (human verified)
-        - Logs provenance in term_audit_log
-        - Resolves review_queue entries for this term
+        - Computes controlled confidence based on reviewer role (Admin: 0.98, Reviewer: 0.95, explicit override if provided)
+        - Logs full provenance and audit trail with reviewer ID and timestamp
+        - Resolves matching review_queue entries
         """
         source_clean = source_term.lower().strip()
-        now = datetime.utcnow().isoformat()
+        trans_clean = corrected_translation.strip()
+        from datetime import timezone
+        now = datetime.now(timezone.utc).isoformat()
+        
+        # Calculate controlled confidence (prevent instant 1.0 poisoning)
+        if target_confidence is not None:
+            assigned_conf = max(0.50, min(0.99, float(target_confidence)))
+        elif reviewer_role == "ADMIN":
+            assigned_conf = 0.98
+        elif reviewer_role == "REVIEWER":
+            assigned_conf = 0.95
+        else:
+            assigned_conf = 0.70
         
         with get_db() as conn:
             cursor = conn.cursor()
@@ -476,31 +591,35 @@ class KnowledgeGraphService:
                 old_translations = dict(translations)
                 
                 # Update translation for target_lang
-                translations[target_lang] = corrected_translation.strip()
+                translations[target_lang] = trans_clean
                 
                 cursor.execute("""
                     UPDATE terms
                     SET translations_json = ?,
                         version = ?,
-                        confidence = 1.0,
+                        confidence = ?,
                         status = 'APPROVED',
+                        approved_by = ?,
                         updated_at = ?
                     WHERE id = ?
                 """, (
                     json.dumps(translations, ensure_ascii=False),
                     new_version,
+                    assigned_conf,
+                    reviewer_id,
                     now,
                     term_id
                 ))
                 
-                # Log audit history
+                # Log audit history with authenticated reviewer ID
                 cursor.execute("""
                     INSERT INTO term_audit_log (id, term_id, version, action, changed_by, old_value_json, new_value_json, reviewer_notes, timestamp)
-                    VALUES (?, ?, ?, 'HUMAN_CORRECTION', 'HUMAN_REVIEWER', ?, ?, ?, ?)
+                    VALUES (?, ?, ?, 'HUMAN_CORRECTION', ?, ?, ?, ?, ?)
                 """, (
                     str(uuid.uuid4()),
                     term_id,
                     new_version,
+                    reviewer_id,
                     json.dumps(old_translations, ensure_ascii=False),
                     json.dumps(translations, ensure_ascii=False),
                     reviewer_notes,
@@ -511,41 +630,53 @@ class KnowledgeGraphService:
                 # Create brand new verified term node
                 term_id = str(uuid.uuid4())
                 new_version = 1
-                translations = {target_lang: corrected_translation.strip()}
+                translations = {target_lang: trans_clean}
                 cursor.execute("""
-                    INSERT INTO terms (id, source_term, domain, definition, translations_json, version, confidence, status, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, 1, 1.0, 'APPROVED', ?, ?)
+                    INSERT INTO terms (id, source_term, domain, definition, translations_json, version, confidence, status, created_by, approved_by, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, 1, ?, 'APPROVED', ?, ?, ?, ?)
                 """, (
                     term_id,
                     source_clean,
                     domain,
-                    f"Domain term identified and approved by human reviewer",
+                    f"Domain term verified by reviewer ({reviewer_role})",
                     json.dumps(translations, ensure_ascii=False),
+                    assigned_conf,
+                    reviewer_id,
+                    reviewer_id,
                     now,
                     now
                 ))
                 
                 cursor.execute("""
                     INSERT INTO term_audit_log (id, term_id, version, action, changed_by, new_value_json, reviewer_notes, timestamp)
-                    VALUES (?, ?, 1, 'HUMAN_NEW_TERM', 'HUMAN_REVIEWER', ?, ?, ?)
+                    VALUES (?, ?, 1, 'HUMAN_NEW_TERM', ?, ?, ?, ?)
                 """, (
                     str(uuid.uuid4()),
                     term_id,
+                    reviewer_id,
                     json.dumps(translations, ensure_ascii=False),
                     reviewer_notes,
                     now
                 ))
             
             # Resolve any matching pending items in review queue
+            valid_user_fk = None
+            if reviewer_id:
+                cursor.execute("SELECT id FROM users WHERE id = ?", (reviewer_id,))
+                if cursor.fetchone():
+                    valid_user_fk = reviewer_id
+
             cursor.execute("""
                 UPDATE review_queue
                 SET status = 'RESOLVED',
+                    reviewed_by = ?,
                     resolved_at = ?,
                     reviewer_comment = ?
                 WHERE (term_id = ? OR term_text = ?) AND target_lang = ? AND status = 'PENDING'
             """, (
+                valid_user_fk,
                 now,
-                f"Resolved via KG update to '{corrected_translation}'",
+                f"Resolved via verified update by {reviewer_role} to '{trans_clean}'",
                 term_id,
                 source_clean,
                 target_lang
@@ -556,12 +687,118 @@ class KnowledgeGraphService:
                 "source_term": source_clean,
                 "domain": domain,
                 "target_lang": target_lang,
-                "approved_translation": corrected_translation.strip(),
+                "approved_translation": trans_clean,
                 "new_version": new_version,
-                "confidence": 1.0,
+                "confidence": assigned_conf,
+                "reviewer_id": reviewer_id,
+                "reviewer_role": reviewer_role,
                 "status": "APPROVED",
                 "timestamp": now
             }
+
+    def rollback_term(self, term_id: str, target_version: int, reviewer_id: str, reason: str = "Rollback to prior version") -> Dict[str, Any]:
+        """
+        Anti-Poisoning Rollback: Reverts a term to an earlier recorded version in term_audit_log.
+        """
+        from datetime import timezone
+        now = datetime.now(timezone.utc).isoformat()
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM terms WHERE id = ?", (term_id,))
+            term = cursor.fetchone()
+            if not term:
+                raise ValueError(f"Term {term_id} not found.")
+
+            cursor.execute("SELECT * FROM term_audit_log WHERE term_id = ? AND version = ?", (term_id, target_version))
+            target_audit = cursor.fetchone()
+            if not target_audit:
+                raise ValueError(f"Audit log for version {target_version} of term {term_id} not found.")
+
+            restored_translations = target_audit["new_value_json"]
+            new_version = term["version"] + 1
+
+            cursor.execute("""
+                UPDATE terms
+                SET translations_json = ?,
+                    version = ?,
+                    confidence = 0.90,
+                    updated_at = ?
+                WHERE id = ?
+            """, (restored_translations, new_version, now, term_id))
+
+            cursor.execute("""
+                INSERT INTO term_audit_log (id, term_id, version, action, changed_by, old_value_json, new_value_json, reviewer_notes, timestamp)
+                VALUES (?, ?, ?, 'ROLLBACK', ?, ?, ?, ?, ?)
+            """, (
+                str(uuid.uuid4()),
+                term_id,
+                new_version,
+                reviewer_id,
+                term["translations_json"],
+                restored_translations,
+                f"Rollback to v{target_version}: {reason}",
+                now
+            ))
+
+            return {
+                "term_id": term_id,
+                "restored_version": target_version,
+                "new_version": new_version,
+                "translations": json.loads(restored_translations),
+                "timestamp": now
+            }
+
+    def stage_candidate_term(self, source_term: str, domain: str, target_lang: str, proposed_translation: str, user_id: str, definition: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Stages an unverified term proposal from standard users with status='CANDIDATE' and low confidence.
+        Requires reviewer approval before injection into translation constraints.
+        """
+        from datetime import timezone
+        now = datetime.now(timezone.utc).isoformat()
+        source_clean = source_term.lower().strip()
+        trans_clean = proposed_translation.strip()
+        term_id = str(uuid.uuid4())
+        translations = {target_lang: trans_clean}
+
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT id FROM terms WHERE source_term = ? AND domain = ?", (source_clean, domain))
+            if cursor.fetchone():
+                raise ValueError("Term already exists in Knowledge Graph.")
+
+            cursor.execute("""
+                INSERT INTO terms (id, source_term, domain, definition, translations_json, version, confidence, status, created_by, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, 1, 0.50, 'CANDIDATE', ?, ?, ?)
+            """, (
+                term_id,
+                source_clean,
+                domain,
+                definition or "Proposed candidate term awaiting expert verification",
+                json.dumps(translations, ensure_ascii=False),
+                user_id,
+                now,
+                now
+            ))
+
+            cursor.execute("""
+                INSERT INTO term_audit_log (id, term_id, version, action, changed_by, new_value_json, reviewer_notes, timestamp)
+                VALUES (?, ?, 1, 'USER_CANDIDATE_SUBMISSION', ?, ?, 'Staged for reviewer verification', ?)
+            """, (
+                str(uuid.uuid4()),
+                term_id,
+                user_id,
+                json.dumps(translations, ensure_ascii=False),
+                now
+            ))
+
+        return {
+            "term_id": term_id,
+            "source_term": source_clean,
+            "domain": domain,
+            "status": "CANDIDATE",
+            "confidence": 0.50,
+            "created_by": user_id
+        }
 
     def export_graph_json(self, domain: Optional[str] = None) -> Dict[str, Any]:
         """
@@ -615,6 +852,22 @@ class KnowledgeGraphService:
                     "source": node_id,
                     "target": lang_node_id,
                     "type": "TRANSLATES_TO"
+                })
+
+        # Inter-term ontological relationships
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT r.source_term_id, r.target_term_id, r.relation_type, r.confidence
+                FROM term_relationships r
+            """)
+            rels = cursor.fetchall()
+            for r in rels:
+                links.append({
+                    "source": f"term_{r['source_term_id']}",
+                    "target": f"term_{r['target_term_id']}",
+                    "type": r["relation_type"],
+                    "confidence": r["confidence"]
                 })
 
         return {"nodes": nodes, "links": links}

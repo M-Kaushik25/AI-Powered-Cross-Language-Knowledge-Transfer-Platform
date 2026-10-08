@@ -1,0 +1,62 @@
+{
+  "domain": "biomedical_devices",
+  "domain_display": "Biomedical Devices & Clinical Engineering",
+  "description": "Gold standard bilingual evaluation benchmark for Biomedical Engineering terminology transfer",
+  "items": [
+    {
+      "id": "bio_001",
+      "source_en": "Mechanical ventilators regulate positive end-expiratory pressure and tidal volume for patient respiration.",
+      "terms": ["positive end-expiratory pressure", "tidal volume"],
+      "gold_translations": {
+        "hi": "मैकेनिकल वेंटिलेटर रोगी के श्वसन के लिए सकारात्मक अंत-समाप्ति दबाव और ज्वारीय आयतन को नियंत्रित करते हैं।",
+        "ta": "இயந்திர சுவாசக்கருவிகள் நோயாளியின் சுவாசத்திற்கு சாதகமான முடிவு-மூச்சுத்திணறல் அழுத்தம் மற்றும் அமைதி மூச்சு அளவை ஒழுங்குபடுத்துகின்றன.",
+        "de": "Beatmungsgeräte regulieren den positiven endexspiratorischen Druck und das Atemzugvolumen für die Patientenatmung.",
+        "es": "Los ventiladores mecánicos regulan la presión positiva al final de la espiración y el volumen corriente para la respiración del paciente."
+      }
+    },
+    {
+      "id": "bio_002",
+      "source_en": "Continuous pulse oximetry and capnography are critical to prevent barotrauma during intubation.",
+      "terms": ["pulse oximetry", "capnography", "barotrauma"],
+      "gold_translations": {
+        "hi": "इंट्यूबेशन के दौरान बारोट्रॉमा को रोकने के लिए निरंतर पल्स ऑक्सीमेट्री और कैप्नोग्राफी महत्वपूर्ण हैं।",
+        "ta": "குழாய் செலுத்துதலின் போது அழுத்த காயத்தை தடுக்க தொடர்ச்சியான துடிப்பு ஆக்சிமெட்ரி மற்றும் கார்பன் டை ஆக்சைடு அளவீடு மிக முக்கியம்.",
+        "de": "Kontinuierliche Pulsoximetrie und Kapnographie sind entscheidend, um ein Barotrauma während der Intubation zu verhindern.",
+        "es": "La pulsioximetría y la capnografía continuas son fundamentales para prevenir el barotrauma durante la intubación."
+      }
+    },
+    {
+      "id": "bio_003",
+      "source_en": "Biocompatibility standards ensure safety during repeated hemodialysis treatments.",
+      "terms": ["biocompatibility", "hemodialysis"],
+      "gold_translations": {
+        "hi": "जैव अनुकूलता मानक बार-बार हेमोडायलिसिस उपचार के दौरान सुरक्षा सुनिश्चित करते हैं।",
+        "ta": "உயிர் இணக்கத்தன்மை தரநிலைகள் தொடர்ச்சியான இரத்த சுத்திகரிப்பு சிகிச்சையின் போது பாதுகாப்பை உறுதி செய்கின்றன.",
+        "de": "Biokompatibilitätsstandards gewährleisten die Sicherheit bei wiederholten Hämodialysebehandlungen.",
+        "es": "Los estándares de biocompatibilidad garantizan la seguridad durante los tratamientos repetidos de hemodiálisis."
+      }
+    },
+    {
+      "id": "bio_004",
+      "source_en": "Defibrillator shock delivery must be synchronized with cardiac telemetry monitoring.",
+      "terms": ["defibrillator shock"],
+      "gold_translations": {
+        "hi": "डिफाइब्रिलेटर शॉक डिलीवरी को कार्डियक टेलीमेट्री निगरानी के साथ सिंक्रनाइज़ किया जाना चाहिए।",
+        "ta": "இதய தொலைநிலை கண்காணிப்புடன் இதய அதிர்ச்சி சாதனம் வழங்குவது ஒத்திசைக்கப்பட வேண்டும்.",
+        "de": "Die Schockabgabe des Defibrillators muss mit der kardialen Telemetrieüberwachung synchronisiert werden.",
+        "es": "La descarga del desfibrilador debe sincronizarse con la monitorización de telemetría cardíaca."
+      }
+    },
+    {
+      "id": "bio_005",
+      "source_en": "Arterial blood pressure monitoring prevents hemodynamic collapse during critical surgery.",
+      "terms": ["arterial blood pressure"],
+      "gold_translations": {
+        "hi": "धमनी रक्तचाप की निगरानी महत्वपूर्ण सर्जरी के दौरान हेमोडायनामिक पतन को रोकती है।",
+        "ta": "தமனி இரத்த அழுத்த கண்காணிப்பு அறுவை சிகிச்சையின் போது இரத்த ஓட்ட வீழ்ச்சியைத் தடுக்கிறது.",
+        "de": "Die Überwachung des arteriellen Blutdrucks verhindert einen hämodynamischen Kollaps während kritischer Operationen.",
+        "es": "La monitorización de la presión arterial previene el colapso hemodinámico durante la cirugía crítica."
+      }
+    }
+  ]
+}

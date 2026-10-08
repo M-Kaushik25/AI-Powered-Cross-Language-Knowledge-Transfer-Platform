@@ -1,33 +1,46 @@
 import uuid
-from datetime import datetime
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, status
 from pydantic import BaseModel, EmailStr
-from typing import Optional
-from backend.database import get_db
+from typing import Optional, Dict, Any
 
-router = APIRouter(prefix="/api/auth", tags=["Auth"])
+from backend.database import get_db, get_utc_now_iso
+from backend.services.auth_service import (
+    hash_password,
+    verify_password,
+    create_access_token,
+    get_current_user
+)
+
+router = APIRouter(prefix="/api/auth", tags=["Authentication & Access Control"])
 
 class RegisterRequest(BaseModel):
     name: str
-    email: str
+    email: EmailStr
     password: str
     role: Optional[str] = "USER"
     preferred_lang: Optional[str] = "en"
 
 class LoginRequest(BaseModel):
-    email: str
+    email: EmailStr
     password: str
 
-@router.post("/register")
+@router.post("/register", status_code=status.HTTP_201_CREATED)
 def register(req: RegisterRequest):
-    now = datetime.utcnow().isoformat()
+    now = get_utc_now_iso()
+    assigned_role = req.role if req.role in ["USER", "REVIEWER", "ADMIN"] else "USER"
+    
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT id FROM users WHERE email = ?", (req.email.lower().strip(),))
         if cursor.fetchone():
-            raise HTTPException(status_code=400, detail="User with this email already exists.")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="A user with this email address already exists."
+            )
         
         user_id = str(uuid.uuid4())
+        hashed_pwd = hash_password(req.password)
+        
         cursor.execute("""
             INSERT INTO users (id, name, email, password_hash, role, preferred_lang, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -35,92 +48,66 @@ def register(req: RegisterRequest):
             user_id,
             req.name.strip(),
             req.email.lower().strip(),
-            f"hash_{req.password}", # safe hashed representation
-            req.role,
+            hashed_pwd,
+            assigned_role,
             req.preferred_lang,
             now
         ))
         
-        # Create default knowledge space for user
+        # Create initial default workspace
         space_id = str(uuid.uuid4())
         cursor.execute("""
             INSERT INTO knowledge_spaces (id, user_id, name, description, domain, default_lang, created_at)
-            VALUES (?, ?, 'Cloud Engineering Repository', 'Default technical repository for cloud and distributed systems documents', 'cloud_computing', ?, ?)
+            VALUES (?, ?, 'Personal Knowledge Space', 'User workspace for cross-language document exploration', 'cloud_computing', ?, ?)
         """, (space_id, user_id, req.preferred_lang, now))
 
+    token = create_access_token({"sub": user_id, "email": req.email, "role": assigned_role})
     return {
-        "user_id": user_id,
-        "name": req.name,
-        "email": req.email,
-        "role": req.role,
-        "preferred_lang": req.preferred_lang,
-        "token": f"token_{user_id}"
+        "access_token": token,
+        "token_type": "bearer",
+        "user": {
+            "id": user_id,
+            "name": req.name,
+            "email": req.email,
+            "role": assigned_role,
+            "preferred_lang": req.preferred_lang
+        }
     }
 
 @router.post("/login")
 def login(req: LoginRequest):
+    email_clean = req.email.lower().strip()
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM users WHERE email = ?", (req.email.lower().strip(),))
+        cursor.execute("SELECT * FROM users WHERE email = ?", (email_clean,))
         user = cursor.fetchone()
-        if not user or user["password_hash"] != f"hash_{req.password}":
-            # If default test user does not exist, auto-create for seamless viva demo
-            now = datetime.utcnow().isoformat()
-            user_id = str(uuid.uuid4())
-            cursor.execute("""
-                INSERT INTO users (id, name, email, password_hash, role, preferred_lang, created_at)
-                VALUES (?, ?, ?, ?, 'ADMIN', 'en', ?)
-            """, (user_id, req.email.split('@')[0].capitalize(), req.email.lower().strip(), f"hash_{req.password}", now))
-            
-            space_id = str(uuid.uuid4())
-            cursor.execute("""
-                INSERT INTO knowledge_spaces (id, user_id, name, description, domain, default_lang, created_at)
-                VALUES (?, ?, 'Primary Technical Repository', 'Central knowledge space for technical specifications and papers', 'cloud_computing', 'en', ?)
-            """, (space_id, user_id, now))
-            
-            user = {
-                "id": user_id,
-                "name": req.email.split('@')[0].capitalize(),
-                "email": req.email,
-                "role": "ADMIN",
-                "preferred_lang": "en"
-            }
+        
+        if not user or not verify_password(req.password, user["password_hash"]):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid email or password.",
+                headers={"WWW-Authenticate": "Bearer"}
+            )
 
-    return {
-        "user_id": user["id"],
-        "name": user["name"],
+    token = create_access_token({
+        "sub": user["id"],
         "email": user["email"],
-        "role": user["role"],
-        "preferred_lang": user["preferred_lang"],
-        "token": f"token_{user['id']}"
+        "role": user["role"]
+    })
+    
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "user": {
+            "id": user["id"],
+            "name": user["name"],
+            "email": user["email"],
+            "role": user["role"],
+            "preferred_lang": user["preferred_lang"]
+        }
     }
 
 @router.get("/me")
-def get_me():
-    # Return active demo profile
-    with get_db() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM users LIMIT 1")
-        user = cursor.fetchone()
-        if not user:
-            # Create default lead researcher account
-            now = datetime.utcnow().isoformat()
-            user_id = str(uuid.uuid4())
-            cursor.execute("""
-                INSERT INTO users (id, name, email, password_hash, role, preferred_lang, created_at)
-                VALUES (?, 'Lead Researcher / Examiner', 'researcher@clrag.platform', 'hash_demo', 'ADMIN', 'en', ?)
-            """, (user_id, now))
-            
-            cursor.execute("""
-                INSERT INTO knowledge_spaces (id, user_id, name, description, domain, default_lang, created_at)
-                VALUES (?, ?, 'Cloud & Distributed Systems Repository', 'Primary research corpus for terminology and cross-language retrieval', 'cloud_computing', 'en', ?)
-            """, (str(uuid.uuid4()), user_id, now))
-            
-            return {
-                "user_id": user_id,
-                "name": "Lead Researcher / Examiner",
-                "email": "researcher@clrag.platform",
-                "role": "ADMIN",
-                "preferred_lang": "en"
-            }
-        return user
+def get_me(current_user: Dict[str, Any] = Depends(get_current_user)):
+    """Returns the authenticated user extracted strictly from the JWT Bearer token."""
+    return current_user

@@ -1,9 +1,10 @@
 from datetime import datetime
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, Dict, Any
 from backend.database import get_db
 from backend.services.kg_service import kg_service
+from backend.services.auth_service import require_role
 
 router = APIRouter(prefix="/api/review", tags=["Review Queue"])
 
@@ -28,11 +29,15 @@ def list_review_items(status: Optional[str] = "PENDING"):
     }
 
 @router.post("/{item_id}/correct")
-def correct_and_update_kg(item_id: str, req: ReviewActionRequest):
+def correct_and_update_kg(
+    item_id: str,
+    req: ReviewActionRequest,
+    current_user: Dict[str, Any] = Depends(require_role(["ADMIN", "REVIEWER"]))
+):
     """
     Submits a human correction for a flagged low-confidence segment/term:
     1. Updates the Living Terminology Knowledge Graph (self-evolution loop).
-    2. Increments version and logs provenance.
+    2. Increments version and logs provenance with authenticated reviewer identity.
     3. Resolves this queue entry.
     """
     with get_db() as conn:
@@ -42,14 +47,16 @@ def correct_and_update_kg(item_id: str, req: ReviewActionRequest):
         if not item:
             raise HTTPException(status_code=404, detail="Review item not found")
 
-    # Apply correction to Knowledge Graph
+    # Apply correction to Knowledge Graph with authenticated reviewer metadata
     kg_res = kg_service.apply_human_correction(
         source_term=item["term_text"],
         target_lang=item["target_lang"],
         corrected_translation=req.corrected_translation,
         domain=item["domain"],
         reviewer_notes=req.reviewer_comment or "Self-updating correction from Human Review Hub",
-        term_id=item["term_id"]
+        term_id=item["term_id"],
+        reviewer_id=current_user["id"],
+        reviewer_role=current_user["role"]
     )
 
     now = datetime.utcnow().isoformat()
@@ -58,10 +65,11 @@ def correct_and_update_kg(item_id: str, req: ReviewActionRequest):
         cursor.execute("""
             UPDATE review_queue
             SET status = 'RESOLVED',
+                reviewed_by = ?,
                 resolved_at = ?,
                 reviewer_comment = ?
             WHERE id = ?
-        """, (now, req.reviewer_comment, item_id))
+        """, (current_user["id"], now, req.reviewer_comment, item_id))
 
     return {
         "status": "SUCCESS",
@@ -70,15 +78,19 @@ def correct_and_update_kg(item_id: str, req: ReviewActionRequest):
     }
 
 @router.post("/{item_id}/dismiss")
-def dismiss_review_item(item_id: str):
+def dismiss_review_item(
+    item_id: str,
+    current_user: Dict[str, Any] = Depends(require_role(["ADMIN", "REVIEWER"]))
+):
     now = datetime.utcnow().isoformat()
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute("""
             UPDATE review_queue
             SET status = 'DISMISSED',
+                reviewed_by = ?,
                 resolved_at = ?,
                 reviewer_comment = 'Dismissed by reviewer without Knowledge Graph alteration'
             WHERE id = ?
-        """, (now, item_id))
+        """, (current_user["id"], now, item_id))
     return {"status": "SUCCESS", "message": "Item marked dismissed"}

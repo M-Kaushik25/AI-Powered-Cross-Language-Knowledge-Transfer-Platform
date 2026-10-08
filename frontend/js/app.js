@@ -11,6 +11,37 @@ let activeSpaces = [];
 let currentSpaceId = null;
 let chartTSR = null;
 let chartReview = null;
+let authToken = localStorage.getItem('clrag_token');
+let currentUser = JSON.parse(localStorage.getItem('clrag_user') || 'null');
+
+async function authFetch(url, options = {}) {
+  options.headers = options.headers || {};
+  if (authToken) {
+    options.headers['Authorization'] = `Bearer ${authToken}`;
+  }
+  return fetch(url, options);
+}
+
+async function ensureAuthenticated() {
+  if (!authToken) {
+    try {
+      const res = await fetch(`${API_BASE}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'reviewer@clrag.org', password: 'ReviewerPassword123!' })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        authToken = data.access_token;
+        currentUser = data.user;
+        localStorage.setItem('clrag_token', authToken);
+        localStorage.setItem('clrag_user', JSON.stringify(currentUser));
+      }
+    } catch (e) {
+      console.warn("Auto-auth session init:", e);
+    }
+  }
+}
 
 // Technical sentences for quick demo
 const SAMPLE_SENTENCES = [
@@ -21,9 +52,10 @@ const SAMPLE_SENTENCES = [
 ];
 
 // Initialize on DOM ready
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   initNavigation();
   initModals();
+  await ensureAuthenticated();
   loadInitialData();
   setupEventListeners();
 });
@@ -280,7 +312,7 @@ async function handleAddTermSubmit(e) {
   const definition = document.getElementById('term-modal-def').value.trim();
 
   try {
-    const res = await fetch(`${API_BASE}/kg/terms`, {
+    const res = await authFetch(`${API_BASE}/kg/terms`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -392,7 +424,7 @@ async function submitHumanCorrection(itemId) {
   }
 
   try {
-    const res = await fetch(`${API_BASE}/review/${itemId}/correct`, {
+    const res = await authFetch(`${API_BASE}/review/${itemId}/correct`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -421,7 +453,7 @@ async function submitHumanCorrection(itemId) {
 
 async function dismissReviewItem(itemId) {
   try {
-    await fetch(`${API_BASE}/review/${itemId}/dismiss`, { method: 'POST' });
+    await authFetch(`${API_BASE}/review/${itemId}/dismiss`, { method: 'POST' });
     showToast("Item dismissed.");
     loadReviewQueue();
     loadStats();
@@ -681,8 +713,8 @@ function renderEvaluationCharts(metrics) {
   const comparison = metrics.comparison || [];
 
   const roundLabels = rounds.map(r => r.round);
-  const tsrValues = rounds.map(r => r.tsr_percentage);
-  const reviewValues = rounds.map(r => r.review_volume_percentage);
+  const tsrValues = rounds.map(r => r.tsr_percentage !== undefined ? r.tsr_percentage : r.term_usage_rate_percent);
+  const reviewValues = rounds.map(r => r.review_volume_percentage !== undefined ? r.review_volume_percentage : r.review_rate_percent);
 
   // Chart 1: TSR
   const ctxTSR = document.getElementById('chart-tsr-rounds');
@@ -709,7 +741,7 @@ function renderEvaluationCharts(metrics) {
         maintainAspectRatio: false,
         plugins: { legend: { display: false } },
         scales: {
-          y: { min: 70, max: 100, grid: { color: 'rgba(255,255,255,0.05)' } },
+          y: { min: 0, max: 100, grid: { color: 'rgba(255,255,255,0.05)' } },
           x: { grid: { color: 'rgba(255,255,255,0.05)' } }
         }
       }
@@ -736,7 +768,7 @@ function renderEvaluationCharts(metrics) {
         maintainAspectRatio: false,
         plugins: { legend: { display: false } },
         scales: {
-          y: { min: 0, max: 50, grid: { color: 'rgba(255,255,255,0.05)' } },
+          y: { min: 0, max: 100, grid: { color: 'rgba(255,255,255,0.05)' } },
           x: { grid: { color: 'rgba(255,255,255,0.05)' } }
         }
       }

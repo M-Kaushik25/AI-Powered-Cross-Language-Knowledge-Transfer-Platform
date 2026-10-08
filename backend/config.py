@@ -1,4 +1,5 @@
 import os
+import secrets
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -10,14 +11,19 @@ BACKEND_DIR = Path(__file__).resolve().parent
 DATA_DIR = BACKEND_DIR / "data"
 DATA_DIR.mkdir(exist_ok=True)
 
-DB_PATH = str(DATA_DIR / "platform.db")
+# Dynamic DB Path: supports test database redirection via DATABASE_PATH
+DEFAULT_DB_PATH = str(DATA_DIR / "platform.db")
+DB_PATH = os.getenv("DATABASE_PATH", DEFAULT_DB_PATH)
+
+def get_current_db_path() -> str:
+    """Returns current active DB path (supports runtime test overrides)."""
+    return os.getenv("DATABASE_PATH", DB_PATH)
 
 # API Keys (optional; if not set, platform runs in deterministic local/offline simulation mode)
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
 # Confidence Gating Threshold (tau)
-# Terms or segments with confidence < CONFIDENCE_THRESHOLD are routed to the Human Review Queue
 CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD", "0.85"))
 
 # Supported Languages
@@ -37,7 +43,13 @@ DEFAULT_DOMAINS = [
     "machine_learning"
 ]
 
-# JWT Settings
-JWT_SECRET = os.getenv("JWT_SECRET", "clrag-super-secret-key-final-project-2026")
-JWT_ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 hours
+# JWT & Security Configuration
+_env_secret = os.getenv("JWT_SECRET")
+if not _env_secret or _env_secret == "clrag-super-secret-key-final-project-2026":
+    # Use deterministic dev secret only if explicitly in development without .env
+    JWT_SECRET = _env_secret or "clrag-dev-secret-replace-in-production-2026"
+else:
+    JWT_SECRET = _env_secret
+
+JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", str(60 * 24)))  # 24 hours

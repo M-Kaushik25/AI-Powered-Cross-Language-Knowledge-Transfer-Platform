@@ -1,13 +1,17 @@
 import uuid
 import json
 from datetime import datetime
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Depends
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from backend.database import get_db
 from backend.services.rag_service import rag_service
+from backend.services.auth_service import get_optional_user
 
 router = APIRouter(prefix="/api/documents", tags=["Documents & Knowledge Spaces"])
+
+MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024  # 15 MB
+ALLOWED_EXTENSIONS = {"txt", "md", "pdf", "docx", "json", "csv"}
 
 class SpaceCreateRequest(BaseModel):
     name: str
@@ -36,14 +40,21 @@ def list_spaces():
     return spaces
 
 @router.post("/spaces")
-def create_space(req: SpaceCreateRequest):
+def create_space(
+    req: SpaceCreateRequest,
+    current_user: Optional[Dict[str, Any]] = Depends(get_optional_user)
+):
     now = datetime.utcnow().isoformat()
     space_id = str(uuid.uuid4())
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT id FROM users LIMIT 1")
-        user_row = cursor.fetchone()
-        user_id = user_row["id"] if user_row else "default_user"
+        if current_user:
+            user_id = current_user["id"]
+        else:
+            cursor.execute("SELECT id FROM users LIMIT 1")
+            user_row = cursor.fetchone()
+            user_id = user_row["id"] if user_row else "default_user"
+
         cursor.execute("""
             INSERT INTO knowledge_spaces (id, user_id, name, description, domain, default_lang, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -69,6 +80,8 @@ def list_documents(space_id: Optional[str] = None):
 def ingest_text_document(req: DirectDocumentIngestRequest):
     if not req.content.strip():
         raise HTTPException(status_code=400, detail="Document content cannot be empty")
+    if len(req.content.encode("utf-8")) > MAX_FILE_SIZE_BYTES:
+        raise HTTPException(status_code=413, detail=f"Payload exceeds maximum allowed size ({MAX_FILE_SIZE_BYTES // (1024*1024)} MB)")
         
     res = rag_service.ingest_document(
         space_id=req.space_id,
@@ -86,6 +99,16 @@ async def upload_document(
     file: UploadFile = File(...)
 ):
     contents = await file.read()
+    if len(contents) > MAX_FILE_SIZE_BYTES:
+        raise HTTPException(status_code=413, detail=f"Uploaded file exceeds {MAX_FILE_SIZE_BYTES // (1024*1024)} MB limit")
+    
+    ext = file.filename.split(".")[-1].lower() if "." in file.filename else "txt"
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Unsupported file type .{ext}. Allowed extensions: {', '.join(sorted(ALLOWED_EXTENSIONS))}"
+        )
+
     # Try decoding text
     try:
         text_content = contents.decode("utf-8")
@@ -97,7 +120,7 @@ async def upload_document(
         space_id=space_id,
         filename=file.filename,
         content=text_content,
-        file_type=file.filename.split(".")[-1].lower() if "." in file.filename else "txt",
+        file_type=ext,
         domain=domain
     )
     return res

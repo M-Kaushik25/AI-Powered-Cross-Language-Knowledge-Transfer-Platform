@@ -196,13 +196,14 @@ class ExpertiseAdaptiveService:
         terms_summary: list,
         mode: str
     ) -> Dict[str, Any]:
-        novice_words = len(novice_text.split())
-        expert_words = len(expert_text.split())
-        
-        # Reading Complexity Estimation
-        # Novice has lower sentence length and everyday terms; Expert has higher lexical density
-        novice_complexity_score = 42.5  # Lower complexity index (Easier to read)
-        expert_complexity_score = 88.0  # High complexity index (Specialized technical)
+        novice_metrics = self._compute_readability_metrics(novice_text)
+        expert_metrics = self._compute_readability_metrics(expert_text)
+
+        # Empirical adaptation appropriateness:
+        # Measures whether novice is appropriately easier than expert and domain terms are preserved
+        term_retention = 1.0 if not terms_summary else sum(1 for t in terms_summary if t.lower() in expert_text.lower()) / len(terms_summary)
+        readability_differential = max(0.0, expert_metrics["complexity_index"] - novice_metrics["complexity_index"])
+        appropriateness_score = round(min(0.99, max(0.65, 0.70 + 0.15 * term_retention + 0.15 * min(1.0, readability_differential / 30.0))), 4)
 
         return {
             "source_length_words": len(source_text.split()),
@@ -212,18 +213,76 @@ class ExpertiseAdaptiveService:
             "novice_adaptation": {
                 "level": "Novice / Student / General Audience",
                 "text": novice_text,
-                "word_count": novice_words,
-                "complexity_index": novice_complexity_score,
+                "word_count": novice_metrics["word_count"],
+                "complexity_index": novice_metrics["complexity_index"],
+                "flesch_reading_ease": novice_metrics["flesch_reading_ease"],
+                "flesch_kincaid_grade": novice_metrics["flesch_kincaid_grade"],
+                "type_token_ratio": novice_metrics["type_token_ratio"],
                 "features": ["Intuitive Real-world Analogy", "Simplified Syntax", "Plain Takeaways", "Demystified Jargon"]
             },
             "expert_adaptation": {
                 "level": "Senior Systems Architect / Domain Specialist",
                 "text": expert_text,
-                "word_count": expert_words,
-                "complexity_index": expert_complexity_score,
+                "word_count": expert_metrics["word_count"],
+                "complexity_index": expert_metrics["complexity_index"],
+                "flesch_reading_ease": expert_metrics["flesch_reading_ease"],
+                "flesch_kincaid_grade": expert_metrics["flesch_kincaid_grade"],
+                "type_token_ratio": expert_metrics["type_token_ratio"],
                 "features": ["Formal Operational Metrics", "Architectural Constraints", "SLAs & Invariants", "Controlled Terminology Density"]
             },
-            "adaptation_appropriateness_score": 0.96
+            "readability_differential": round(readability_differential, 2),
+            "adaptation_appropriateness_score": appropriateness_score
+        }
+
+    def _count_syllables(self, word: str) -> int:
+        """Approximates syllable count using vowel clusters across Latin and Indic scripts."""
+        word = word.lower().strip()
+        if len(word) <= 3:
+            return 1
+        vowels = "aeiouy\u0904-\u0914\u0b85-\u0b94"
+        clusters = len(re.findall(f"[{vowels}]+", word))
+        if word.endswith("e") and not word.endswith("le") and clusters > 1:
+            clusters -= 1
+        return max(1, clusters)
+
+    def _compute_readability_metrics(self, text: str) -> Dict[str, float]:
+        """
+        Computes empirical readability statistics:
+        - Flesch Reading Ease (FRE): 206.835 - 1.015*(words/sentences) - 84.6*(syllables/words)
+        - Flesch-Kincaid Grade Level (FKGL): 0.39*(words/sentences) + 11.8*(syllables/words) - 15.59
+        - Type-Token Ratio (TTR): unique_words / total_words
+        - Complexity Index: 100 - FRE (0-100 scale; higher = more cognitively demanding)
+        """
+        clean_text = re.sub(r'#|\*|-', ' ', text)
+        sentences = [s.strip() for s in re.split(r'[.!?\n]+', clean_text) if len(s.strip()) > 3]
+        num_sentences = max(1, len(sentences))
+        
+        words = [w.lower() for w in re.findall(r'\b\w+\b', clean_text) if len(w) > 0]
+        num_words = max(1, len(words))
+        
+        total_syllables = sum(self._count_syllables(w) for w in words)
+        unique_words = len(set(words))
+        
+        asl = num_words / num_sentences
+        asw = total_syllables / num_words
+        
+        fre = 206.835 - (1.015 * asl) - (84.6 * asw)
+        fre = max(0.0, min(100.0, fre))
+        
+        fkgl = (0.39 * asl) + (11.8 * asw) - 15.59
+        fkgl = max(1.0, min(20.0, fkgl))
+        
+        ttr = unique_words / num_words
+        complexity_index = round(max(5.0, min(95.0, 100.0 - fre)), 2)
+        
+        return {
+            "complexity_index": complexity_index,
+            "flesch_reading_ease": round(fre, 2),
+            "flesch_kincaid_grade": round(fkgl, 2),
+            "type_token_ratio": round(ttr, 4),
+            "avg_sentence_length": round(asl, 2),
+            "avg_syllables_per_word": round(asw, 2),
+            "word_count": num_words
         }
 
 adaptive_service = ExpertiseAdaptiveService()

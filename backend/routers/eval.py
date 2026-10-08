@@ -15,3 +15,7 @@ def run_ablation(req: RunAblationRequest):
 @router.get("/latest")
 def get_latest_results():
     return eval_service.get_latest_eval_run()
+
+@router.post("/baselines")
+def compare_baselines(req: RunAblationRequest):
+    return eval_service.run_baselines_comparison(domain=req.domain)

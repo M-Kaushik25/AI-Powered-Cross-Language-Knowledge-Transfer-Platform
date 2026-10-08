@@ -6,7 +6,7 @@ from typing import List, Dict, Any, Optional
 import httpx
 
 from backend.config import GEMINI_API_KEY, CONFIDENCE_THRESHOLD, SUPPORTED_LANGUAGES
-from backend.database import get_db
+from backend.database import get_db, get_utc_now_iso
 from backend.services.kg_service import kg_service
 
 # Heuristic dictionary for offline translation simulation when no API key is provided
@@ -145,6 +145,40 @@ class MultiAgentTranslationService:
                 "segment_index": idx + 1,
                 "source_segment": segment,
                 "target_segment": draft_translation,
+                # Agent 1: Contextual Translator
+                "agent_1_translator": {
+                    "draft_translation": draft_translation,
+                    "engine": translator_res.get("mode", "deterministic_local"),
+                    "constraints_applied_count": len(constraints)
+                },
+                # Agent 2: Terminology Controller
+                "agent_2_terminology_controller": {
+                    "constraints_injected": constraints,
+                    "satisfied": verifier_res["satisfied"],
+                    "violated": verifier_res["violated"],
+                    "term_satisfaction_rate": verifier_res["score"],
+                    "explanation": verifier_res.get("explanation", "")
+                },
+                # Agent 3: Cross-Lingual Context Validator
+                "agent_3_context_validator": {
+                    "uncovered_terms": uncovered_terms,
+                    "semantic_drift_detected": bool(uncovered_terms),
+                    "coverage_score": 0.40 if uncovered_terms else 1.0
+                },
+                # Agent 4: Adversarial Critic
+                "agent_4_critic": {
+                    "score": critic_res["score"],
+                    "notes": critic_res["notes"],
+                    "engine": "gemini_llm_critic" if self.gemini_api_key else "heuristic_critic"
+                },
+                # Agent 5: Calibrated Gating Layer
+                "agent_5_gating_layer": {
+                    "calibrated_confidence": round(calibrated_confidence, 4),
+                    "threshold_tau": CONFIDENCE_THRESHOLD,
+                    "routing_decision": routing_status,
+                    "requires_human_review": is_low_confidence
+                },
+                # Backward-compatible flat keys for UI and test suites
                 "constraints_injected": constraints,
                 "verifier_report": verifier_res,
                 "critic_report": critic_res,
@@ -157,6 +191,7 @@ class MultiAgentTranslationService:
 
         avg_confidence = round(total_confidence / max(len(segments), 1), 4)
         term_usage_rate = round((terms_verified / max(terms_encountered, 1)) * 100, 2) if terms_encountered > 0 else 100.0
+        review_vol_pct = round((queued_for_review_count / max(len(segments), 1)) * 100, 2)
 
         return {
             "job_id": job_id,
@@ -171,7 +206,15 @@ class MultiAgentTranslationService:
             "terms_encountered": terms_encountered,
             "terms_verified": terms_verified,
             "queued_for_review": queued_for_review_count,
-            "review_rate_percentage": round((queued_for_review_count / max(len(segments), 1)) * 100, 2),
+            "review_rate_percentage": review_vol_pct,
+            "pipeline_telemetry": {
+                "agents_count": 5,
+                "execution_mode": "neural_gemini" if self.gemini_api_key else "deterministic_offline",
+                "confidence_threshold_tau": CONFIDENCE_THRESHOLD,
+                "avg_calibrated_confidence": avg_confidence,
+                "term_usage_rate_percent": term_usage_rate,
+                "review_volume_percentage": review_vol_pct
+            },
             "segments": segment_results
         }
 
@@ -217,15 +260,16 @@ class MultiAgentTranslationService:
         Guarantees that constraints from the Living KG are accurately injected.
         """
         translated = segment
-        # Replace known phrases first
+        # Replace known phrases first (safe lambda closure prevents backreference injection)
         lang_phrases = OFFLINE_PHRASE_TEMPLATES.get(target_lang, {})
         for en_p, tr_p in lang_phrases.items():
-            translated = re.sub(r'\b' + re.escape(en_p) + r'\b', tr_p, translated, flags=re.IGNORECASE)
+            translated = re.sub(r'\b' + re.escape(en_p) + r'\b', lambda m, r=tr_p: r, translated, flags=re.IGNORECASE)
 
-        # Inject terminology constraints with exact target term
+        # Inject terminology constraints safely without regex template expansion
         for c in constraints:
             pattern = r'\b' + re.escape(c["source_term"]) + r'\b'
-            translated = re.sub(pattern, c["target_term"], translated, flags=re.IGNORECASE)
+            target_val = c["target_term"]
+            translated = re.sub(pattern, lambda m, r=target_val: r, translated, flags=re.IGNORECASE)
 
         # Polish syntactic connectors for Indian and European languages
         if target_lang == "hi":
@@ -382,7 +426,7 @@ class MultiAgentTranslationService:
         """
         Enqueues low-confidence segment/terms into the Human-in-the-Loop Review Queue.
         """
-        now = datetime.utcnow().isoformat()
+        now = get_utc_now_iso()
         with get_db() as conn:
             cursor = conn.cursor()
             
