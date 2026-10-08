@@ -1,6 +1,6 @@
 import os
-import secrets
 from pathlib import Path
+
 from dotenv import load_dotenv
 
 # Load environment variables from .env if present
@@ -10,6 +10,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 BACKEND_DIR = Path(__file__).resolve().parent
 DATA_DIR = BACKEND_DIR / "data"
 DATA_DIR.mkdir(exist_ok=True)
+
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
 
 # Dynamic DB Path: supports test database redirection via DATABASE_PATH
 DEFAULT_DB_PATH = str(DATA_DIR / "platform.db")

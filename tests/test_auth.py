@@ -1,8 +1,12 @@
-import pytest
 from fastapi.testclient import TestClient
+
 from backend.main import app
-from backend.services.auth_service import hash_password, verify_password, create_access_token, decode_access_token
-from backend.database import get_db
+from backend.services.auth_service import (
+    create_access_token,
+    decode_access_token,
+    hash_password,
+    verify_password,
+)
 
 client = TestClient(app)
 
@@ -105,7 +109,7 @@ def test_rbac_endpoint_access_control():
     # 3. Rollback requires ADMIN
     term_id = res_reviewer.json()["data"]["term_id"]
     rollback_payload = {"target_version": 1, "reason": "Test rollback"}
-    
+
     # REVIEWER attempting rollback should be rejected (403)
     res_rb_reviewer = client.post(f"/api/kg/terms/{term_id}/rollback", json=rollback_payload, headers={"Authorization": f"Bearer {reviewer_token}"})
     assert res_rb_reviewer.status_code == 403

@@ -1,11 +1,13 @@
+
 import pytest
-import asyncio
-from backend.database import init_db, get_db
+
+from backend.database import get_db, init_db
+from backend.services.adaptive_service import adaptive_service
+from backend.services.eval_service import eval_service
 from backend.services.kg_service import kg_service
 from backend.services.multi_agent_service import multi_agent_service
-from backend.services.adaptive_service import adaptive_service
 from backend.services.rag_service import rag_service
-from backend.services.eval_service import eval_service
+
 
 @pytest.fixture(scope="module", autouse=True)
 def setup_database():
@@ -92,7 +94,7 @@ def test_rag_semantic_search():
         domain="distributed_systems"
     )
     assert doc_res["status"] == "READY"
-    
+
     # Query
     results = rag_service.search_chunks("test_space_1", "circuit breaker failure", top_k=2)
     assert len(results) >= 1

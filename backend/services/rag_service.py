@@ -1,14 +1,15 @@
 import json
-import uuid
-import re
 import math
-from datetime import datetime, timezone
-from typing import List, Dict, Any, Optional
+import re
+import uuid
+from typing import Any
+
 import httpx
 
 from backend.config import GEMINI_API_KEY, SUPPORTED_LANGUAGES
 from backend.database import get_db, get_utc_now_iso
 from backend.services.kg_service import kg_service
+
 
 # Cross-Lingual Concept & Lexical Projector for multilingual offline & hybrid semantic search
 class CrossLanguageSemanticVectorizer:
@@ -56,7 +57,7 @@ class CrossLanguageSemanticVectorizer:
             "cómo": "how", "funciona": "work", "confiabilidad": "reliability"
         }
 
-    def tokenize(self, text: str) -> List[str]:
+    def tokenize(self, text: str) -> list[str]:
         words = re.findall(r'\b[a-zA-Z0-9_\u0900-\u097F\u0B80-\u0BFF\-]+\b', text.lower())
         return [w for w in words if w not in self.stop_words and len(w) > 1]
 
@@ -64,12 +65,12 @@ class CrossLanguageSemanticVectorizer:
         clean = re.sub(r'[^a-z0-9]+', '_', source_term.lower()).strip('_')
         return f"__concept_{clean}__"
 
-    def compute_chunk_vector(self, text: str, detected_terms: List[str]) -> Dict[str, float]:
+    def compute_chunk_vector(self, text: str, detected_terms: list[str]) -> dict[str, float]:
         """
         Indexes chunk text with rich multilingual concept expansions.
         """
         tokens = self.tokenize(text)
-        tf: Dict[str, float] = {}
+        tf: dict[str, float] = {}
         for t in tokens:
             tf[t] = tf.get(t, 0.0) + 1.0
 
@@ -107,12 +108,12 @@ class CrossLanguageSemanticVectorizer:
                 tf[k] /= norm
         return tf
 
-    def compute_query_vector(self, query: str) -> Dict[str, float]:
+    def compute_query_vector(self, query: str) -> dict[str, float]:
         """
         Projects queries in ANY language (EN, HI, TA, DE, ES) into aligned concept and lexical space.
         """
         tokens = self.tokenize(query)
-        tf: Dict[str, float] = {}
+        tf: dict[str, float] = {}
         query_lower = query.lower()
 
         for t in tokens:
@@ -127,7 +128,7 @@ class CrossLanguageSemanticVectorizer:
             for t in all_terms:
                 st = t["source_term"].lower()
                 concept_key = self._canonicalize_concept(st)
-                
+
                 # Check English source term
                 if st in query_lower:
                     tf[concept_key] = tf.get(concept_key, 0.0) + 4.0
@@ -172,7 +173,7 @@ class CrossLanguageSemanticVectorizer:
                 tf[k] /= norm
         return tf
 
-    def cosine_similarity(self, vec1: Dict[str, float], vec2: Dict[str, float]) -> float:
+    def cosine_similarity(self, vec1: dict[str, float], vec2: dict[str, float]) -> float:
         dot_product = 0.0
         # Iterate over smaller vector for performance
         if len(vec1) > len(vec2):
@@ -195,20 +196,20 @@ class CrossLanguageRAGService:
         content: str,
         file_type: str = "txt",
         domain: str = "cloud_computing"
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Parses, chunks, extracts terminology, and stores a document in the Knowledge Space
         with pre-computed multilingual concept representations.
         """
         doc_id = str(uuid.uuid4())
         now = get_utc_now_iso()
-        
+
         # Step 1: Clean and split into chunks of ~150-250 words with 30 word overlap
         words = content.split()
         chunk_size = 180
         overlap = 30
         chunks = []
-        
+
         start = 0
         while start < len(words):
             end = min(start + chunk_size, len(words))
@@ -237,16 +238,16 @@ class CrossLanguageRAGService:
                 len(chunks),
                 now
             ))
-            
+
             for idx, chunk_text in enumerate(chunks):
                 chunk_id = str(uuid.uuid4())
                 # Extract any domain terms inside this chunk
                 extracted = kg_service.extract_candidate_terms(chunk_text, domain=domain)
                 detected_terms = [e["source_term"] for e in extracted]
-                
+
                 # Compute multilingual concept vector
                 vec = self.vectorizer.compute_chunk_vector(chunk_text, detected_terms)
-                
+
                 cursor.execute("""
                     INSERT INTO document_chunks (id, document_id, space_id, chunk_index, content, embedding_json, detected_terms_json)
                     VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -268,7 +269,7 @@ class CrossLanguageRAGService:
             "status": "READY"
         }
 
-    def search_chunks(self, space_id: str, query: str, top_k: int = 4) -> List[Dict[str, Any]]:
+    def search_chunks(self, space_id: str, query: str, top_k: int = 4) -> list[dict[str, Any]]:
         """
         Multilingual semantic search across all document chunks within a knowledge space.
         Supports cross-lingual queries (e.g. Hindi or Tamil query on English documents).
@@ -289,15 +290,15 @@ class CrossLanguageRAGService:
             for r in rows:
                 chunk_vec = json.loads(r["embedding_json"]) if r["embedding_json"] else {}
                 detected_terms = json.loads(r["detected_terms_json"]) if r["detected_terms_json"] else []
-                
+
                 sim = self.vectorizer.cosine_similarity(query_vec, chunk_vec)
-                
+
                 # Check for direct concept overlap
                 for t in detected_terms:
                     ck = self.vectorizer._canonicalize_concept(t)
                     if ck in query_vec:
                         sim += 0.20
-                        
+
                 scored_chunks.append({
                     "chunk_id": r["id"],
                     "document_id": r["document_id"],
@@ -316,14 +317,14 @@ class CrossLanguageRAGService:
         space_id: str,
         question: str,
         target_lang: str = "en",
-        conversation_id: Optional[str] = None
-    ) -> Dict[str, Any]:
+        conversation_id: str | None = None
+    ) -> dict[str, Any]:
         """
         CL-RAG Q&A Engine:
         Retrieves grounded chunks from space, generates answer, provides source citations with empirical confidence.
         """
         retrieved_chunks = self.search_chunks(space_id, query=question, top_k=4)
-        
+
         # Build context
         context_blocks = []
         citations = []
@@ -370,7 +371,7 @@ class CrossLanguageRAGService:
         ans = self._deterministic_answer(question, retrieved_chunks, target_lang)
         return self._save_and_package_message(conversation_id, space_id, question, ans, target_lang, citations, calibrated_confidence)
 
-    def _deterministic_answer(self, question: str, chunks: List[Dict[str, Any]], target_lang: str) -> str:
+    def _deterministic_answer(self, question: str, chunks: list[dict[str, Any]], target_lang: str) -> str:
         if not chunks or chunks[0]["score"] < 0.05:
             not_found = {
                 "en": "I searched the knowledge base, but couldn't find sufficient context in the uploaded documents to answer your question accurately.",
@@ -393,7 +394,7 @@ class CrossLanguageRAGService:
             "es": "Basado en los documentos técnicos de su espacio de conocimiento:"
         }
         preface = prefaces.get(target_lang, prefaces["en"])
-        
+
         joined_answer = " ".join(summary_points)
         if target_lang != "en":
             for term in chunks[0].get("detected_terms", []):
@@ -411,27 +412,24 @@ class CrossLanguageRAGService:
 
     def _save_and_package_message(
         self,
-        conversation_id: Optional[str],
+        conversation_id: str | None,
         space_id: str,
         question: str,
         answer: str,
         target_lang: str,
         citations: list,
         confidence: float
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         now = get_utc_now_iso()
         with get_db() as conn:
             cursor = conn.cursor()
             if not conversation_id:
-                conversation_id = str(uuid.uuid4())
                 cursor.execute("SELECT user_id FROM knowledge_spaces WHERE id = ?", (space_id,))
                 space_row = cursor.fetchone()
-                if space_row and space_row["user_id"]:
-                    user_id = space_row["user_id"]
-                else:
-                    cursor.execute("SELECT id FROM users LIMIT 1")
-                    user_row = cursor.fetchone()
-                    user_id = user_row["id"] if user_row else "default_user"
+                if not space_row:
+                    raise ValueError(f"Knowledge space '{space_id}' does not exist")
+                user_id = space_row["user_id"]
+                conversation_id = str(uuid.uuid4())
 
                 cursor.execute("""
                     INSERT INTO conversations (id, space_id, user_id, title, target_lang, created_at)

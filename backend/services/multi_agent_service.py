@@ -1,11 +1,11 @@
 import json
-import uuid
 import re
-from datetime import datetime
-from typing import List, Dict, Any, Optional
+import uuid
+from typing import Any
+
 import httpx
 
-from backend.config import GEMINI_API_KEY, CONFIDENCE_THRESHOLD, SUPPORTED_LANGUAGES
+from backend.config import CONFIDENCE_THRESHOLD, GEMINI_API_KEY, SUPPORTED_LANGUAGES
 from backend.database import get_db, get_utc_now_iso
 from backend.services.kg_service import kg_service
 
@@ -58,7 +58,7 @@ class MultiAgentTranslationService:
     def __init__(self):
         self.gemini_api_key = GEMINI_API_KEY
 
-    def split_into_segments(self, text: str) -> List[str]:
+    def split_into_segments(self, text: str) -> list[str]:
         """
         Splits text into per-segment units (sentences).
         Essential to prevent multi-term batch drops as verified in ACL 2026.
@@ -72,11 +72,11 @@ class MultiAgentTranslationService:
         source_text: str,
         target_lang: str,
         domain: str = "cloud_computing",
-        job_id: Optional[str] = None
-    ) -> Dict[str, Any]:
+        job_id: str | None = None
+    ) -> dict[str, Any]:
         if not job_id:
             job_id = str(uuid.uuid4())
-            
+
         segments = self.split_into_segments(source_text)
         segment_results = []
         translated_segments = []
@@ -98,15 +98,15 @@ class MultiAgentTranslationService:
             # Step 2: Agent 1 - Translator Agent
             translator_res = await self._run_translator_agent(segment, constraints, target_lang, domain)
             draft_translation = translator_res["translation"]
-            
+
             # Step 3: Agent 2 - Terminology-Verifier Agent (Symbolic constraint check)
             verifier_res = self._run_verifier_agent(segment, draft_translation, constraints)
             if verifier_res["satisfied"]:
                 terms_verified += len(verifier_res["satisfied"])
-                
+
             # Step 4: Agent 3 - Domain-Critic Agent (Semantic drift check)
             critic_res = await self._run_critic_agent(segment, draft_translation, domain, target_lang)
-            
+
             # Step 5: Calibrated Confidence Computation
             calibrated_confidence = self._compute_calibrated_confidence(
                 verifier_score=verifier_res["score"],
@@ -118,11 +118,11 @@ class MultiAgentTranslationService:
                 # a confident automatic pass regardless of what the critic heuristic says.
                 calibrated_confidence = min(calibrated_confidence, 0.40)
             total_confidence += calibrated_confidence
-            
+
             # Step 6: Confidence Gating Router (< tau routes to Human Review Queue)
             is_low_confidence = calibrated_confidence < CONFIDENCE_THRESHOLD
             routing_status = "ROUTED_TO_HUMAN_REVIEW" if is_low_confidence else "AUTOMATICALLY_VERIFIED"
-            
+
             if is_low_confidence:
                 queued_for_review_count += 1
                 self._enqueue_for_review(
@@ -140,7 +140,7 @@ class MultiAgentTranslationService:
                         if uncovered_terms else ""
                     )
                 )
-                
+
             segment_data = {
                 "segment_index": idx + 1,
                 "source_segment": segment,
@@ -221,10 +221,10 @@ class MultiAgentTranslationService:
     async def _run_translator_agent(
         self,
         segment: str,
-        constraints: List[Dict[str, Any]],
+        constraints: list[dict[str, Any]],
         target_lang: str,
         domain: str
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Agent 1 (Translator): Formulates draft translation strictly respecting injected terminology constraints.
         """
@@ -254,7 +254,7 @@ class MultiAgentTranslationService:
         # Local deterministic translation engine
         return {"translation": self._deterministic_translate(segment, constraints, target_lang), "mode": "deterministic_local"}
 
-    def _deterministic_translate(self, segment: str, constraints: List[Dict[str, Any]], target_lang: str) -> str:
+    def _deterministic_translate(self, segment: str, constraints: list[dict[str, Any]], target_lang: str) -> str:
         """
         High-fidelity local deterministic translation with symbolic constraint injection.
         Guarantees that constraints from the Living KG are accurately injected.
@@ -278,15 +278,15 @@ class MultiAgentTranslationService:
         elif target_lang == "ta":
             if not translated.endswith("."):
                 translated += "."
-                
+
         return translated
 
     def _run_verifier_agent(
         self,
         source_segment: str,
         draft_translation: str,
-        constraints: List[Dict[str, Any]]
-    ) -> Dict[str, Any]:
+        constraints: list[dict[str, Any]]
+    ) -> dict[str, Any]:
         """
         Agent 2 (Terminology-Verifier): Performs symbolic constraint verification.
         Computes exact presence of required target terminology in the translation.
@@ -316,7 +316,7 @@ class MultiAgentTranslationService:
 
         score = len(satisfied) / len(constraints)
         status = "PASSED" if score >= 0.99 else ("PARTIAL" if score > 0 else "FAILED")
-        
+
         explanation = (
             f"All {len(constraints)} terminology constraints satisfied."
             if not violated else
@@ -337,7 +337,7 @@ class MultiAgentTranslationService:
         draft_translation: str,
         domain: str,
         target_lang: str
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Agent 3 (Domain-Critic): Analyzes semantic drift, domain appropriateness, and translation quality.
         """
@@ -395,7 +395,7 @@ class MultiAgentTranslationService:
         self,
         verifier_score: float,
         critic_score: float,
-        constraints: List[Dict[str, Any]]
+        constraints: list[dict[str, Any]]
     ) -> float:
         """
         Calibrated Confidence Equation:
@@ -417,7 +417,7 @@ class MultiAgentTranslationService:
         target_segment: str,
         target_lang: str,
         domain: str,
-        constraints: List[Dict[str, Any]],
+        constraints: list[dict[str, Any]],
         confidence: float,
         verifier_score: float,
         critic_score: float,
@@ -429,10 +429,10 @@ class MultiAgentTranslationService:
         now = get_utc_now_iso()
         with get_db() as conn:
             cursor = conn.cursor()
-            
+
             term_id = constraints[0]["term_id"] if constraints else None
             term_text = constraints[0]["source_term"] if constraints else "General Segment Drift"
-            
+
             cursor.execute("""
                 INSERT INTO review_queue (
                     id, job_id, source_segment, target_segment, target_lang, domain,

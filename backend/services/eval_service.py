@@ -15,18 +15,18 @@ METHODOLOGY & SCIENTIFIC RIGOR:
    - ZERO hardcoded or fabricated constants.
 """
 
+import asyncio
+import json
 import os
 import shutil
 import tempfile
-import asyncio
-import json
 import uuid
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import Any
 
-from backend.config import get_current_db_path, BASE_DIR
-from backend.database import get_db, init_db, get_utc_now_iso
-from backend.services.kg_service import kg_service, SEED_TERMS
+from backend.config import BASE_DIR, get_current_db_path
+from backend.database import get_db, get_utc_now_iso, init_db
+from backend.services.kg_service import SEED_TERMS, kg_service
 from backend.services.multi_agent_service import multi_agent_service
 
 GOLD_DICTIONARY = {item["source_term"]: item["translations"] for item in SEED_TERMS}
@@ -36,7 +36,7 @@ class EvaluationService:
     def __init__(self):
         self.benchmark_dir = BASE_DIR / "data" / "evaluation"
 
-    def _load_benchmark_dataset(self, domain: str = "cloud_computing") -> List[Dict[str, Any]]:
+    def _load_benchmark_dataset(self, domain: str = "cloud_computing") -> list[dict[str, Any]]:
         """Loads domain sentences and gold reference translations from data/evaluation/ benchmark files."""
         filename = f"benchmark_{domain}.json" if not domain.startswith("benchmark_") else f"{domain}.json"
         target_path = self.benchmark_dir / filename
@@ -74,7 +74,7 @@ class EvaluationService:
         intersection = hyp_tokens.intersection(ref_tokens)
         return round((len(intersection) / len(hyp_tokens)) * 100, 2)
 
-    def run_comprehensive_ablation(self, domain: str = "cloud_computing", target_lang: str = "hi") -> Dict[str, Any]:
+    def run_comprehensive_ablation(self, domain: str = "cloud_computing", target_lang: str = "hi") -> dict[str, Any]:
         """
         Executes an isolated 3-round self-evolution experiment:
         Round 1: Cold Start (target language missing from KG for test terms)
@@ -200,7 +200,7 @@ class EvaluationService:
             "metrics": metrics
         }
 
-    def run_baselines_comparison(self, domain: str = "cloud_computing", target_lang: str = "hi") -> Dict[str, Any]:
+    def run_baselines_comparison(self, domain: str = "cloud_computing", target_lang: str = "hi") -> dict[str, Any]:
         """
         Evaluates 4 comparative system configurations on the benchmark:
         1. Vanilla MT (No terminology constraint injection)
@@ -209,11 +209,9 @@ class EvaluationService:
         4. Proposed CL-RAG (Full 5-Agent Pipeline with Living KG & Calibrated Gating)
         """
         benchmark_items = self._load_benchmark_dataset(domain)
-        results = []
 
         # 1. Vanilla MT
         vanilla_tsr = 0.0
-        vanilla_queued = 0
         total_terms = sum(len(item["terms"]) for item in benchmark_items)
 
         # Baseline evaluations
@@ -256,7 +254,7 @@ class EvaluationService:
             "summary": f"CL-RAG improves Term-Usage Success Rate by +{round(final_round['tsr_percentage'] - vanilla_score, 2)}% over generic MT."
         }
 
-    def _apply_cold_start_in_current_db(self, domain: str, target_lang: str, term_list: List[str]) -> int:
+    def _apply_cold_start_in_current_db(self, domain: str, target_lang: str, term_list: list[str]) -> int:
         modified = 0
         with get_db() as conn:
             cursor = conn.cursor()
@@ -302,7 +300,7 @@ class EvaluationService:
                 seen.add(t_text)
         return applied
 
-    def _evaluate_round(self, items: List[Dict[str, Any]], target_lang: str, round_name: str) -> Dict[str, Any]:
+    def _evaluate_round(self, items: list[dict[str, Any]], target_lang: str, round_name: str) -> dict[str, Any]:
         required_total = 0
         required_correct = 0
         total_segments = 0
@@ -347,7 +345,7 @@ class EvaluationService:
             "segments_queued_for_review": total_queued
         }
 
-    def get_latest_eval_run(self) -> Dict[str, Any]:
+    def get_latest_eval_run(self) -> dict[str, Any]:
         with get_db() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM eval_runs ORDER BY created_at DESC LIMIT 1")
@@ -369,7 +367,7 @@ class EvaluationService:
         }
 
 
-def re_tokenize(text: str) -> List[str]:
+def re_tokenize(text: str) -> list[str]:
     import re
     return re.findall(r'\b\w+\b', text)
 

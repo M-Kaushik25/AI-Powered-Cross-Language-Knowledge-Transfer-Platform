@@ -1,10 +1,11 @@
-import sqlite3
 import json
+import sqlite3
 import uuid
-from datetime import datetime, timezone
 from contextlib import contextmanager
-from typing import Optional
+from datetime import datetime, timezone
+
 from backend.config import get_current_db_path
+
 
 def dict_factory(cursor, row):
     d = {}
@@ -12,7 +13,7 @@ def dict_factory(cursor, row):
         d[col[0]] = row[idx]
     return d
 
-def get_connection(db_path: Optional[str] = None) -> sqlite3.Connection:
+def get_connection(db_path: str | None = None) -> sqlite3.Connection:
     target_path = db_path or get_current_db_path()
     conn = sqlite3.connect(target_path, timeout=30.0)
     conn.row_factory = dict_factory
@@ -23,7 +24,7 @@ def get_connection(db_path: Optional[str] = None) -> sqlite3.Connection:
     return conn
 
 @contextmanager
-def get_db(db_path: Optional[str] = None):
+def get_db(db_path: str | None = None):
     conn = get_connection(db_path)
     try:
         yield conn
@@ -34,10 +35,10 @@ def get_db(db_path: Optional[str] = None):
     finally:
         conn.close()
 
-def init_db(db_path: Optional[str] = None):
+def init_db(db_path: str | None = None):
     with get_db(db_path) as conn:
         cursor = conn.cursor()
-        
+
         # 1. Users with strictly enforced roles: ADMIN, REVIEWER, USER
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (
@@ -50,7 +51,7 @@ def init_db(db_path: Optional[str] = None):
             created_at TEXT NOT NULL
         )
         """)
-        
+
         # 2. Knowledge Spaces (User/Org Scoped)
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS knowledge_spaces (
@@ -64,7 +65,7 @@ def init_db(db_path: Optional[str] = None):
             FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
         )
         """)
-        
+
         # 3. Documents
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS documents (
@@ -81,7 +82,7 @@ def init_db(db_path: Optional[str] = None):
             FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE SET NULL
         )
         """)
-        
+
         # 4. Document Chunks
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS document_chunks (
@@ -108,7 +109,7 @@ def init_db(db_path: Optional[str] = None):
             UNIQUE(canonical_name, domain)
         )
         """)
-        
+
         # 6. Living Terminology Nodes (Graph Level 2)
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS terms (
@@ -143,7 +144,7 @@ def init_db(db_path: Optional[str] = None):
             FOREIGN KEY (target_term_id) REFERENCES terms (id) ON DELETE CASCADE
         )
         """)
-        
+
         # 8. Term Audit Log (Provenanced rollback & evolution history)
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS term_audit_log (
@@ -159,7 +160,7 @@ def init_db(db_path: Optional[str] = None):
             FOREIGN KEY (term_id) REFERENCES terms (id) ON DELETE CASCADE
         )
         """)
-        
+
         # 9. Confidence-Gated Review Queue
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS review_queue (
@@ -184,7 +185,7 @@ def init_db(db_path: Optional[str] = None):
             FOREIGN KEY (reviewed_by) REFERENCES users (id) ON DELETE SET NULL
         )
         """)
-        
+
         # 10. Conversations
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS conversations (
@@ -198,7 +199,7 @@ def init_db(db_path: Optional[str] = None):
             FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
         )
         """)
-        
+
         # 11. Messages
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS messages (
@@ -213,7 +214,7 @@ def init_db(db_path: Optional[str] = None):
             FOREIGN KEY (conversation_id) REFERENCES conversations (id) ON DELETE CASCADE
         )
         """)
-        
+
         # 12. Evaluation Runs (Isolated results store)
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS eval_runs (
@@ -225,7 +226,7 @@ def init_db(db_path: Optional[str] = None):
             created_at TEXT NOT NULL
         )
         """)
-        
+
         # Performance Indexes
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_terms_source_domain ON terms(source_term, domain);")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_review_queue_status ON review_queue(status);")
@@ -233,32 +234,126 @@ def init_db(db_path: Optional[str] = None):
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_term ON term_audit_log(term_id);")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_relationships_source ON term_relationships(source_term_id);")
 
-    # Seed default RBAC users if empty
-    seed_default_users(db_path)
+def seed_all(db_path: str | None = None):
+    """
+    Unified, independently idempotent seed routine.
+    Creates demo accounts only when ENVIRONMENT=development, default workspace,
+    and sample document independently (each check is independent).
+    """
+    import os
 
-def seed_default_users(db_path: Optional[str] = None):
-    """Seeds baseline admin, reviewer, and user accounts if absent."""
+    from backend.config import ENVIRONMENT
     from backend.services.auth_service import hash_password
-    now = datetime.now(timezone.utc).isoformat()
+    now = get_utc_now_iso()
+
+    env = os.getenv("ENVIRONMENT", ENVIRONMENT)
+
     with get_db(db_path) as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT id FROM users WHERE email = 'admin@clrag.org'")
-        if not cursor.fetchone():
+
+        # 1. Independently Seed Demo Accounts in Development
+        admin_id = None
+        if env == "development":
+            cursor.execute("SELECT id FROM users WHERE email = 'admin@clrag.org'")
+            admin_row = cursor.fetchone()
+            if not admin_row:
+                admin_id = str(uuid.uuid4())
+                cursor.execute("""
+                    INSERT INTO users (id, name, email, password_hash, role, preferred_lang, created_at)
+                    VALUES (?, 'Chief Systems Architect', 'admin@clrag.org', ?, 'ADMIN', 'en', ?)
+                """, (admin_id, hash_password("AdminPassword123!"), now))
+            else:
+                admin_id = admin_row["id"]
+
+            cursor.execute("SELECT id FROM users WHERE email = 'reviewer@clrag.org'")
+            if not cursor.fetchone():
+                cursor.execute("""
+                    INSERT INTO users (id, name, email, password_hash, role, preferred_lang, created_at)
+                    VALUES (?, 'Domain Terminology Reviewer', 'reviewer@clrag.org', ?, 'REVIEWER', 'en', ?)
+                """, (str(uuid.uuid4()), hash_password("ReviewerPassword123!"), now))
+
+            cursor.execute("SELECT id FROM users WHERE email = 'user@clrag.org'")
+            if not cursor.fetchone():
+                cursor.execute("""
+                    INSERT INTO users (id, name, email, password_hash, role, preferred_lang, created_at)
+                    VALUES (?, 'Research Student', 'user@clrag.org', ?, 'USER', 'en', ?)
+                """, (str(uuid.uuid4()), hash_password("UserPassword123!"), now))
+        else:
+            cursor.execute("SELECT id FROM users WHERE role = 'ADMIN' LIMIT 1")
+            admin_row = cursor.fetchone()
+            if admin_row:
+                admin_id = admin_row["id"]
+
+        # If admin_id is not set, find any user or use a placeholder system ID
+        if not admin_id:
+            cursor.execute("SELECT id FROM users LIMIT 1")
+            u_row = cursor.fetchone()
+            admin_id = u_row["id"] if u_row else str(uuid.uuid4())
+
+        # 2. Independently Seed Default Knowledge Space
+        cursor.execute("SELECT id FROM knowledge_spaces WHERE name = 'Cloud & Distributed Systems Architecture'")
+        space_row = cursor.fetchone()
+        if not space_row:
+            space_id = str(uuid.uuid4())
             cursor.execute("""
-                INSERT INTO users (id, name, email, password_hash, role, preferred_lang, created_at)
-                VALUES (?, 'Chief Systems Architect', 'admin@clrag.org', ?, 'ADMIN', 'en', ?)
-            """, (str(uuid.uuid4()), hash_password("AdminPassword123!"), now))
+                INSERT INTO knowledge_spaces (id, user_id, name, description, domain, default_lang, created_at)
+                VALUES (?, ?, 'Cloud & Distributed Systems Architecture', 'Authoritative technical specifications covering fault tolerance, load balancers, and eventual consistency.', 'cloud_computing', 'en', ?)
+            """, (space_id, admin_id, now))
+        else:
+            space_id = space_row["id"]
+
+        # 3. Independently Seed Sample Document & Chunks for Default Space
+        cursor.execute("SELECT id FROM documents WHERE space_id = ?", (space_id,))
+        doc_row = cursor.fetchone()
+        if not doc_row:
+            doc_id = str(uuid.uuid4())
+            sample_filename = "cloud_systems_specification_v2.txt"
+            sample_text = (
+                "Cloud infrastructure requires comprehensive fault tolerance to prevent catastrophic system downtime. "
+                "A robust load balancer dynamically distributes incoming user traffic across container clusters to ensure horizontal scaling. "
+                "In modern distributed systems, microservices communicate through a service mesh while enforcing strict rate limiting. "
+                "To mitigate cascading network partitions, architects implement the circuit breaker pattern alongside eventual consistency models. "
+                "Furthermore, write operations must guarantee idempotency so that consumer retries in a dead-letter queue do not produce corrupt side effects. "
+                "High-velocity cache invalidation ensures that state updates propagate predictably across nodes executing the consensus protocol."
+            )
+            # Create chunks
+            words = sample_text.split()
+            chunk_size = 180
+            overlap = 30
+            chunks = []
+            start = 0
+            while start < len(words):
+                end = min(start + chunk_size, len(words))
+                chunk_str = " ".join(words[start:end])
+                if chunk_str.strip():
+                    chunks.append(chunk_str)
+                if end >= len(words):
+                    break
+                start += (chunk_size - overlap)
 
             cursor.execute("""
-                INSERT INTO users (id, name, email, password_hash, role, preferred_lang, created_at)
-                VALUES (?, 'Domain Terminology Reviewer', 'reviewer@clrag.org', ?, 'REVIEWER', 'en', ?)
-            """, (str(uuid.uuid4()), hash_password("ReviewerPassword123!"), now))
+                INSERT INTO documents (id, space_id, user_id, filename, file_type, raw_text, status, chunk_count, created_at)
+                VALUES (?, ?, ?, ?, 'txt', ?, 'READY', ?, ?)
+            """, (doc_id, space_id, admin_id, sample_filename, sample_text, len(chunks), now))
 
-            cursor.execute("""
-                INSERT INTO users (id, name, email, password_hash, role, preferred_lang, created_at)
-                VALUES (?, 'Research Student', 'user@clrag.org', ?, 'USER', 'en', ?)
-            """, (str(uuid.uuid4()), hash_password("UserPassword123!"), now))
+            # Sample domain terms known in cloud_computing
+            sample_terms = ["fault tolerance", "load balancer", "service mesh", "rate limiting", "circuit breaker", "eventual consistency", "idempotency", "cache invalidation"]
+            for idx, chunk_text in enumerate(chunks):
+                chunk_id = str(uuid.uuid4())
+                cursor.execute("""
+                    INSERT INTO document_chunks (id, document_id, space_id, chunk_index, content, embedding_json, detected_terms_json)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    chunk_id,
+                    doc_id,
+                    space_id,
+                    idx + 1,
+                    chunk_text,
+                    json.dumps([]),
+                    json.dumps(sample_terms)
+                ))
 
 def get_utc_now_iso() -> str:
     """Standardized timezone-aware UTC ISO timestamp."""
     return datetime.now(timezone.utc).isoformat()
+

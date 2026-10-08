@@ -1,8 +1,10 @@
-from fastapi import APIRouter, HTTPException, Query, Depends
+from typing import Any
+
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from typing import Optional, Dict, Any, List
-from backend.services.kg_service import kg_service
+
 from backend.services.auth_service import get_current_user, require_role
+from backend.services.kg_service import kg_service
 
 router = APIRouter(prefix="/api/kg", tags=["Knowledge Graph"])
 
@@ -11,26 +13,26 @@ class TermCreateUpdateRequest(BaseModel):
     domain: str
     target_lang: str
     translation: str
-    definition: Optional[str] = None
-    reviewer_notes: Optional[str] = "Manual update via Knowledge Graph Studio"
+    definition: str | None = None
+    reviewer_notes: str | None = "Manual update via Knowledge Graph Studio"
 
 class CandidateTermRequest(BaseModel):
     source_term: str
     domain: str = "cloud_computing"
     target_lang: str
     proposed_translation: str
-    definition: Optional[str] = None
+    definition: str | None = None
 
 class RollbackTermRequest(BaseModel):
     target_version: int
-    reason: Optional[str] = "Anti-poisoning rollback to verified prior state"
+    reason: str | None = "Anti-poisoning rollback to verified prior state"
 
 class ExtractRequest(BaseModel):
     text: str
-    domain: Optional[str] = "cloud_computing"
+    domain: str | None = "cloud_computing"
 
 @router.get("/terms")
-def list_terms(domain: Optional[str] = None, search: Optional[str] = None):
+def list_terms(domain: str | None = None, search: str | None = None):
     terms = kg_service.get_all_terms(domain=domain, search=search)
     return {
         "count": len(terms),
@@ -48,7 +50,7 @@ def get_term_detail(term_id: str):
 @router.post("/terms")
 def create_or_update_term(
     req: TermCreateUpdateRequest,
-    current_user: Dict[str, Any] = Depends(require_role(["ADMIN", "REVIEWER"]))
+    current_user: dict[str, Any] = Depends(require_role(["ADMIN", "REVIEWER"]))
 ):
     res = kg_service.apply_human_correction(
         source_term=req.source_term,
@@ -68,7 +70,7 @@ def create_or_update_term(
 @router.post("/candidates")
 def submit_candidate_term(
     req: CandidateTermRequest,
-    current_user: Dict[str, Any] = Depends(get_current_user)
+    current_user: dict[str, Any] = Depends(get_current_user)
 ):
     try:
         res = kg_service.stage_candidate_term(
@@ -91,7 +93,7 @@ def submit_candidate_term(
 def rollback_term_version(
     term_id: str,
     req: RollbackTermRequest,
-    current_user: Dict[str, Any] = Depends(require_role(["ADMIN"]))
+    current_user: dict[str, Any] = Depends(require_role(["ADMIN"]))
 ):
     try:
         res = kg_service.rollback_term(
@@ -118,5 +120,5 @@ def extract_candidate_terms(req: ExtractRequest):
     }
 
 @router.get("/graph")
-def export_graph_data(domain: Optional[str] = None):
+def export_graph_data(domain: str | None = None):
     return kg_service.export_graph_json(domain=domain)

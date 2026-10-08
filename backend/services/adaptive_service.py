@@ -1,9 +1,11 @@
 import re
-from typing import Dict, Any, Optional
+from typing import Any
+
 import httpx
 
 from backend.config import GEMINI_API_KEY, SUPPORTED_LANGUAGES
 from backend.services.kg_service import kg_service
+
 
 class ExpertiseAdaptiveService:
     def __init__(self):
@@ -14,7 +16,7 @@ class ExpertiseAdaptiveService:
         source_text: str,
         target_lang: str,
         domain: str = "cloud_computing"
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Produces dual-level adaptations of the source knowledge in the chosen target language:
         1. Novice Version: Intuitive conceptual analogies, plain-language glossaries, step-by-step breakdowns.
@@ -70,7 +72,7 @@ class ExpertiseAdaptiveService:
         target_lang: str,
         domain: str,
         terms_summary: list
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Local deterministic adaptation engine generating tailored outputs for Novice vs Expert.
         """
@@ -195,7 +197,7 @@ class ExpertiseAdaptiveService:
         target_lang: str,
         terms_summary: list,
         mode: str
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         novice_metrics = self._compute_readability_metrics(novice_text)
         expert_metrics = self._compute_readability_metrics(expert_text)
 
@@ -245,7 +247,7 @@ class ExpertiseAdaptiveService:
             clusters -= 1
         return max(1, clusters)
 
-    def _compute_readability_metrics(self, text: str) -> Dict[str, float]:
+    def _compute_readability_metrics(self, text: str) -> dict[str, float]:
         """
         Computes empirical readability statistics:
         - Flesch Reading Ease (FRE): 206.835 - 1.015*(words/sentences) - 84.6*(syllables/words)
@@ -256,25 +258,25 @@ class ExpertiseAdaptiveService:
         clean_text = re.sub(r'#|\*|-', ' ', text)
         sentences = [s.strip() for s in re.split(r'[.!?\n]+', clean_text) if len(s.strip()) > 3]
         num_sentences = max(1, len(sentences))
-        
+
         words = [w.lower() for w in re.findall(r'\b\w+\b', clean_text) if len(w) > 0]
         num_words = max(1, len(words))
-        
+
         total_syllables = sum(self._count_syllables(w) for w in words)
         unique_words = len(set(words))
-        
+
         asl = num_words / num_sentences
         asw = total_syllables / num_words
-        
+
         fre = 206.835 - (1.015 * asl) - (84.6 * asw)
         fre = max(0.0, min(100.0, fre))
-        
+
         fkgl = (0.39 * asl) + (11.8 * asw) - 15.59
         fkgl = max(1.0, min(20.0, fkgl))
-        
+
         ttr = unique_words / num_words
         complexity_index = round(max(5.0, min(95.0, 100.0 - fre)), 2)
-        
+
         return {
             "complexity_index": complexity_index,
             "flesch_reading_ease": round(fre, 2),

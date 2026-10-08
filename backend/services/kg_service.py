@@ -1,9 +1,10 @@
 import json
-import uuid
-import re
 import math
+import re
+import uuid
 from datetime import datetime, timezone
-from typing import List, Dict, Any, Optional
+from typing import Any
+
 from backend.database import get_db
 
 # ─────────────────────────────────────────────────────────────
@@ -328,7 +329,7 @@ class KnowledgeGraphService:
                             VALUES (?, ?, ?, ?, ?, ?)
                         """, (str(uuid.uuid4()), src_row["id"], tgt_row["id"], rel_type, rel_conf, now))
 
-    def get_all_terms(self, domain: Optional[str] = None, search: Optional[str] = None) -> List[Dict[str, Any]]:
+    def get_all_terms(self, domain: str | None = None, search: str | None = None) -> list[dict[str, Any]]:
         with get_db() as conn:
             cursor = conn.cursor()
             query = "SELECT * FROM terms WHERE 1=1"
@@ -342,12 +343,12 @@ class KnowledgeGraphService:
             query += " ORDER BY source_term ASC"
             cursor.execute(query, params)
             rows = cursor.fetchall()
-            
+
             for row in rows:
                 row["translations"] = json.loads(row["translations_json"])
             return rows
 
-    def get_term_by_id(self, term_id: str) -> Optional[Dict[str, Any]]:
+    def get_term_by_id(self, term_id: str) -> dict[str, Any] | None:
         with get_db() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM terms WHERE id = ?", (term_id,))
@@ -355,13 +356,13 @@ class KnowledgeGraphService:
             if not row:
                 return None
             row["translations"] = json.loads(row["translations_json"])
-            
+
             # Fetch audit history
             cursor.execute("SELECT * FROM term_audit_log WHERE term_id = ? ORDER BY version DESC", (term_id,))
             row["audit_history"] = cursor.fetchall()
             return row
 
-    def extract_candidate_terms(self, text: str, domain: str = "cloud_computing") -> List[Dict[str, Any]]:
+    def extract_candidate_terms(self, text: str, domain: str = "cloud_computing") -> list[dict[str, Any]]:
         """
         Auto-extracts candidate domain terms from text:
         1. Identifies existing approved Knowledge Graph terms in the text.
@@ -438,7 +439,7 @@ class KnowledgeGraphService:
 
         # Match 2-word and 3-word potential candidate phrases: [Modifier]+ [Head]
         words = re.findall(r'\b[a-zA-Z\-]{3,}\b', text_lower)
-        phrase_counts: Dict[str, int] = {}
+        phrase_counts: dict[str, int] = {}
 
         # 2-grams
         for i in range(len(words) - 1):
@@ -458,14 +459,14 @@ class KnowledgeGraphService:
         for phrase, freq in phrase_counts.items():
             if phrase in seen_terms:
                 continue
-            
+
             # Check if phrase is substring of already seen known term
             if any(phrase in st for st in seen_terms):
                 continue
 
             word_len = len(phrase.split())
             c_value = math.log2(word_len + 1) * freq
-            
+
             # Filter threshold: minimum C-Value of 1.0
             if c_value >= 1.0:
                 conf = round(min(0.85, 0.60 + 0.05 * c_value), 2)
@@ -484,7 +485,7 @@ class KnowledgeGraphService:
 
         return sorted(candidates, key=lambda x: (not x["is_new"], -x["occurrences"]))
 
-    def find_uncovered_terms(self, source_segment: str, domain: str, target_lang: str) -> List[Dict[str, Any]]:
+    def find_uncovered_terms(self, source_segment: str, domain: str, target_lang: str) -> list[dict[str, Any]]:
         """Detects domain terms present in the segment for which the KG has NO target-language
         translation yet. lookup_constraints() only returns terms it can already translate, so a
         term missing target-language coverage is currently invisible to the verifier/confidence
@@ -506,19 +507,19 @@ class KnowledgeGraphService:
                         uncovered.append({"term_id": t["id"], "source_term": st})
         return uncovered
 
-    def lookup_constraints(self, source_segment: str, domain: str, target_lang: str) -> List[Dict[str, Any]]:
+    def lookup_constraints(self, source_segment: str, domain: str, target_lang: str) -> list[dict[str, Any]]:
         """
         Retrieves segment-level terminology constraints for a specific target language.
         Crucial per ACL 2026 (AIDA_term finding: segment-level injection avoids 22% batch accuracy drop).
         """
         source_lower = source_segment.lower()
         constraints = []
-        
+
         with get_db() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM terms WHERE (domain = ? OR domain = 'cloud_computing') AND status = 'APPROVED'", (domain,))
             terms = cursor.fetchall()
-            
+
             for t in terms:
                 st = t["source_term"]
                 pattern = r'\b' + re.escape(st) + r'\b'
@@ -543,11 +544,11 @@ class KnowledgeGraphService:
         corrected_translation: str,
         domain: str = "cloud_computing",
         reviewer_notes: str = "Human expert review update",
-        term_id: Optional[str] = None,
+        term_id: str | None = None,
         reviewer_id: str = "SYSTEM_REVIEWER",
         reviewer_role: str = "REVIEWER",
-        target_confidence: Optional[float] = None
-    ) -> Dict[str, Any]:
+        target_confidence: float | None = None
+    ) -> dict[str, Any]:
         """
         CONTROLLED KG UPDATE WITH ANTI-POISONING:
         Applies a verified human correction to the Living Terminology Knowledge Graph:
@@ -559,9 +560,8 @@ class KnowledgeGraphService:
         """
         source_clean = source_term.lower().strip()
         trans_clean = corrected_translation.strip()
-        from datetime import timezone
         now = datetime.now(timezone.utc).isoformat()
-        
+
         # Calculate controlled confidence (prevent instant 1.0 poisoning)
         if target_confidence is not None:
             assigned_conf = max(0.50, min(0.99, float(target_confidence)))
@@ -571,28 +571,28 @@ class KnowledgeGraphService:
             assigned_conf = 0.95
         else:
             assigned_conf = 0.70
-        
+
         with get_db() as conn:
             cursor = conn.cursor()
-            
+
             # Find existing term or create new
             if term_id:
                 cursor.execute("SELECT * FROM terms WHERE id = ?", (term_id,))
             else:
                 cursor.execute("SELECT * FROM terms WHERE source_term = ? AND domain = ?", (source_clean, domain))
-            
+
             existing = cursor.fetchone()
-            
+
             if existing:
                 term_id = existing["id"]
                 current_version = existing["version"]
                 new_version = current_version + 1
                 translations = json.loads(existing["translations_json"])
                 old_translations = dict(translations)
-                
+
                 # Update translation for target_lang
                 translations[target_lang] = trans_clean
-                
+
                 cursor.execute("""
                     UPDATE terms
                     SET translations_json = ?,
@@ -610,7 +610,7 @@ class KnowledgeGraphService:
                     now,
                     term_id
                 ))
-                
+
                 # Log audit history with authenticated reviewer ID
                 cursor.execute("""
                     INSERT INTO term_audit_log (id, term_id, version, action, changed_by, old_value_json, new_value_json, reviewer_notes, timestamp)
@@ -625,7 +625,7 @@ class KnowledgeGraphService:
                     reviewer_notes,
                     now
                 ))
-                
+
             else:
                 # Create brand new verified term node
                 term_id = str(uuid.uuid4())
@@ -646,7 +646,7 @@ class KnowledgeGraphService:
                     now,
                     now
                 ))
-                
+
                 cursor.execute("""
                     INSERT INTO term_audit_log (id, term_id, version, action, changed_by, new_value_json, reviewer_notes, timestamp)
                     VALUES (?, ?, 1, 'HUMAN_NEW_TERM', ?, ?, ?, ?)
@@ -658,7 +658,7 @@ class KnowledgeGraphService:
                     reviewer_notes,
                     now
                 ))
-            
+
             # Resolve any matching pending items in review queue
             valid_user_fk = None
             if reviewer_id:
@@ -681,7 +681,7 @@ class KnowledgeGraphService:
                 source_clean,
                 target_lang
             ))
-            
+
             return {
                 "term_id": term_id,
                 "source_term": source_clean,
@@ -696,11 +696,10 @@ class KnowledgeGraphService:
                 "timestamp": now
             }
 
-    def rollback_term(self, term_id: str, target_version: int, reviewer_id: str, reason: str = "Rollback to prior version") -> Dict[str, Any]:
+    def rollback_term(self, term_id: str, target_version: int, reviewer_id: str, reason: str = "Rollback to prior version") -> dict[str, Any]:
         """
         Anti-Poisoning Rollback: Reverts a term to an earlier recorded version in term_audit_log.
         """
-        from datetime import timezone
         now = datetime.now(timezone.utc).isoformat()
         with get_db() as conn:
             cursor = conn.cursor()
@@ -748,12 +747,11 @@ class KnowledgeGraphService:
                 "timestamp": now
             }
 
-    def stage_candidate_term(self, source_term: str, domain: str, target_lang: str, proposed_translation: str, user_id: str, definition: Optional[str] = None) -> Dict[str, Any]:
+    def stage_candidate_term(self, source_term: str, domain: str, target_lang: str, proposed_translation: str, user_id: str, definition: str | None = None) -> dict[str, Any]:
         """
         Stages an unverified term proposal from standard users with status='CANDIDATE' and low confidence.
         Requires reviewer approval before injection into translation constraints.
         """
-        from datetime import timezone
         now = datetime.now(timezone.utc).isoformat()
         source_clean = source_term.lower().strip()
         trans_clean = proposed_translation.strip()
@@ -800,14 +798,14 @@ class KnowledgeGraphService:
             "created_by": user_id
         }
 
-    def export_graph_json(self, domain: Optional[str] = None) -> Dict[str, Any]:
+    def export_graph_json(self, domain: str | None = None) -> dict[str, Any]:
         """
         Exports the Knowledge Graph into a nodes-and-links format for visual exploration.
         """
         terms = self.get_all_terms(domain=domain)
         nodes = []
         links = []
-        
+
         # Domain root nodes
         domains_found = set(t["domain"] for t in terms)
         for d in domains_found:
@@ -830,14 +828,14 @@ class KnowledgeGraphService:
                 "translations": t["translations"],
                 "size": 15 + min(t["version"] * 3, 15)
             })
-            
+
             # Link from domain to term
             links.append({
                 "source": f"domain_{t['domain']}",
                 "target": node_id,
                 "type": "IN_DOMAIN"
             })
-            
+
             # Target language translation nodes (selected)
             for lang, trans in t["translations"].items():
                 lang_node_id = f"trans_{t['id']}_{lang}"

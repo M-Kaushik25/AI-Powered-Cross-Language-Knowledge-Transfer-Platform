@@ -1,7 +1,7 @@
-import pytest
-from backend.services.rag_service import rag_service
-from backend.services.kg_service import kg_service
 from backend.database import get_db, get_utc_now_iso
+from backend.services.kg_service import kg_service
+from backend.services.rag_service import rag_service
+
 
 def test_cross_lingual_retrieval_hindi_and_tamil():
     """
@@ -10,7 +10,7 @@ def test_cross_lingual_retrieval_hindi_and_tamil():
     """
     now = get_utc_now_iso()
     space_id = "test_multilingual_space"
-    
+
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT id FROM users LIMIT 1")
