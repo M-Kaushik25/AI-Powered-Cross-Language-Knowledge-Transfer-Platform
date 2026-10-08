@@ -21,9 +21,11 @@ def get_current_db_path() -> str:
     """Returns current active DB path (supports runtime test overrides)."""
     return os.getenv("DATABASE_PATH", DB_PATH)
 
-# API Keys (optional; if not set, platform runs in deterministic local/offline simulation mode)
+# API Keys & LLM Engine Configuration
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+LLM_MODE = os.getenv("LLM_MODE", "auto")  # 'live', 'offline', or 'auto'
 
 # Confidence Gating Threshold (tau)
 CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD", "0.85"))
