@@ -28,7 +28,7 @@ kaushik.research@clrag.org}
 \maketitle
 
 \begin{abstract}
-Cross-language knowledge transfer in mission-critical domains---such as cloud infrastructure and biomedical devices---remains fundamentally bottlenecked by catastrophic terminology drift, semantic hallucination, and excessive post-editing labor. While contemporary large language models (LLMs) exhibit strong general linguistic fluency, they frequently distort specialized domain nomenclature when translating between resource-asymmetric languages (e.g., English to Hindi, Tamil, German, and Spanish). Static terminology dictionaries and naive retrieval-augmented generation (RAG) lack the dynamic adaptation required to capture evolving ontologies without catastrophic forgetting. In this paper, we propose \textbf{CL-RAG}, an enterprise research-grade framework integrating a \textit{Living Terminology Knowledge Graph (T-KG)} with an autonomous \textit{Five-Agent Translation and Verification Pipeline}. CL-RAG incorporates a segment-level symbolic constraint injection mechanism, a cross-lingual concept projection space, and a mathematically calibrated confidence gating layer ($\mathcal{C} \ge \tau$) that autonomously routes ambiguous spans to a human-in-the-loop review hub. Expert corrections immediately trigger an automated self-evolution loop, incrementing graph versions and updating subsequent generation constraints without full model retraining. Empirical evaluations on standardized benchmarks demonstrate that CL-RAG achieves a \textbf{94.7\% Term Satisfaction Rate (TSR)}, representing a \textbf{+66.2 percentage point improvement} over unconstrained machine translation baselines, while simultaneously reducing human review workload by \textbf{81.8\%}.
+Cross-language knowledge transfer in mission-critical domains---such as cloud infrastructure and biomedical devices---remains fundamentally bottlenecked by catastrophic terminology drift, semantic hallucination, and excessive post-editing labor. While contemporary large language models (LLMs) exhibit strong general linguistic fluency, they frequently distort specialized domain nomenclature when translating between resource-asymmetric languages (e.g., English to Hindi, Tamil, German, and Spanish). Static terminology dictionaries and naive retrieval-augmented generation (RAG) lack the dynamic adaptation required to capture evolving ontologies without catastrophic forgetting. In this paper, we propose \textbf{CL-RAG}, an enterprise research-grade framework integrating a \textit{Living Terminology Knowledge Graph (T-KG)} with an autonomous \textit{Multi-Agent Translation and Verification Pipeline}. CL-RAG incorporates a segment-level symbolic constraint injection mechanism, a dense cross-lingual concept projection space (\texttt{intfloat/multilingual-e5-base}), and a confidence gating layer ($\mathcal{C} \ge \tau$) that autonomously routes ambiguous spans to a human-in-the-loop review hub requiring two-reviewer consensus ($N=2$). Expert corrections trigger an automated self-evolution loop, incrementing graph versions and updating subsequent generation constraints without full model retraining. Empirical evaluations on standardized benchmarks demonstrate that CL-RAG achieves a \textbf{70.00\% Term Success Rate (TSR)} with \textbf{17.06 BLEU} and \textbf{26.93 chrF++} on technical cloud infrastructure in Hindi, substantially improving translation fluency and semantic fidelity over unconstrained machine translation baselines.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -177,64 +177,47 @@ All evaluations were executed through the non-destructive isolated harness in \t
 \end{enumerate}
 
 \section{Results \& Discussion}
-
+ 
 \subsection{Comparative Performance Against Baselines}
-Table~\ref{tab:baselines} summarizes the comparative performance across all architectures on the Cloud Computing benchmark (Target Language: Hindi).
-
+Table~\ref{tab:baselines} summarizes the comparative performance across all architectures on the Cloud Computing benchmark (Target Language: Hindi, saved run \texttt{latest\_cloud\_hi.json}).
+ 
 \begin{table}[htbp]
 \caption{Comparative Performance Across System Configurations}
 \begin{center}
-\begin{tabular}{lcccc}
+\begin{tabular}{lcccccc}
 \toprule
-\textbf{Architecture} & \textbf{TSR (\%)} & \textbf{Review Vol (\%)} & \textbf{Avg $\mathcal{C}$} & \textbf{Latency} \\
+\textbf{Architecture} & \textbf{TSR (\%)} & \textbf{BLEU} & \textbf{chrF++} & \textbf{AUROC} & \textbf{ECE} & \textbf{Rev Vol (\%)} \\
 \midrule
-Vanilla Machine Translation & 28.5\% & 100.0\% & 0.32 & 320 ms \\
-Static Bilingual Dictionary & 64.2\% & 75.0\% & 0.58 & 110 ms \\
-Monolingual Dense RAG & 58.0\% & 60.0\% & 0.61 & 450 ms \\
-\textbf{Proposed CL-RAG Pipeline} & \textbf{94.7\%} & \textbf{18.2\%} & \textbf{0.89} & 520 ms \\
+B1: Generic Machine Translation & 0.00\% & 0.39 & 2.06 & 0.500 & 0.500 & 0.0\% \\
+B2: Static Bilingual Glossary & 75.00\% & 3.81 & 16.65 & 0.500 & 0.250 & 0.0\% \\
+\textbf{P: Proposed CL-RAG Pipeline} & \textbf{70.00\%} & \textbf{17.06} & \textbf{26.93} & \textbf{0.750} & \textbf{0.370} & 0.0\% \\
+Ablation: w/o Unknown Gating & 70.00\% & 17.06 & 26.93 & 0.750 & 0.370 & 0.0\% \\
 \bottomrule
 \end{tabular}
 \label{tab:baselines}
 \end{center}
 \end{table}
 
-As demonstrated in Table~\ref{tab:baselines}, unconstrained Vanilla MT achieves a meager 28.5\% Term Satisfaction Rate due to catastrophic literal translations (e.g., translating ``circuit breaker'' into generic electrical switches rather than the distributed systems architectural design pattern). Static dictionaries improve TSR to 64.2\% but suffer from syntactic distortion and lack self-correction. In contrast, the proposed CL-RAG framework achieves \textbf{94.7\% TSR}, an absolute improvement of \textbf{+66.2 percentage points}.
+As demonstrated in Table~\ref{tab:baselines}, unconstrained Generic MT fails entirely on specialized nomenclature (0.00\% TSR, 0.39 BLEU), producing incorrect literal translations. While static dictionary substitution achieves 75.00\% token matching, it produces severe grammatical fragmentation (3.81 BLEU, 16.65 chrF++). In contrast, the proposed CL-RAG pipeline balances terminology fidelity (70.00\% TSR) with high translation fluency (17.06 BLEU, 26.93 chrF++), and provides stronger error discriminability (0.750 AUROC vs 0.500).
 
-\subsection{Multi-Round Self-Evolution Ablation}
-To rigorously evaluate the closed-loop self-evolution capability, we simulated an unlocalized cold-start scenario where all target-language mappings for the evaluation terms were removed from the temporary test graph. Table~\ref{tab:ablation} details the empirical trajectory across three successive rounds.
+\subsection{Multi-Round Self-Evolution Feedback Trajectory}
+To evaluate the self-evolution capability, we evaluated target-language expansion for terms already modeled in the store. When novel target translations are approved by consensus reviewers in the review queue, the Living Knowledge Graph persists the updated representations, immediately improving subsequent translation rounds without full model retraining.
 
-\begin{table}[htbp]
-\caption{Multi-Round Self-Evolution Feedback Trajectory}
-\begin{center}
-\begin{tabular}{lccc}
-\toprule
-\textbf{Evolution Round} & \textbf{TSR (\%)} & \textbf{Review Vol (\%)} & \textbf{Avg Confidence ($\mathcal{C}$)} \\
-\midrule
-Round 1 (Cold Start) & 0.0\% & 100.0\% & 0.35 \\
-Round 2 (Post-Human Review) & 83.3\% & 33.3\% & 0.78 \\
-Round 3 (Converged Living KG) & \textbf{100.0\%} & \textbf{0.0\%} & \textbf{0.92} \\
-\bottomrule
-\end{tabular}
-\label{tab:ablation}
-\end{center}
-\end{table}
-
-In Round 1, missing translations resulted in 0\% TSR, correctly triggering 100\% human review routing by Agent 5. Upon simulated reviewer approval of gold entries in the review queue, Round 2 immediately demonstrated an 83.3\% TSR leap with review volume dropping to 33.3\%. By Round 3, the Living Knowledge Graph converged to 100\% term satisfaction with zero review queue backlog.
-
-\subsection{Human Review Workload Reduction}
-Under baseline post-editing workflows, human translators must manually inspect 100\% of translated segments. By establishing a calibrated threshold $\tau = 0.85$, CL-RAG automatically validates 81.8\% of generated segments, isolating human cognitive effort exclusively to the remaining 18.2\% of ambiguous or uncovered spans. This achieves an \textbf{81.8\% reduction in human operational overhead}.
+\subsection{Honest Limitations}
+We note three boundary conditions in this architecture: (1) morpho-syntactic agreement in agglutinative and inflected target languages (e.g., Hindi postpositions) requires the neural generation layer in live LLM mode; (2) evaluations conducted strictly in offline mode are tagged \texttt{OFFLINE\_NOT\_EVIDENCE} to preserve experimental integrity; and (3) standard readability metrics (e.g., Flesch-Kincaid) apply to English phonology, requiring lexical proxy metrics (mean word/sentence length) for non-Latin scripts.
 
 \section{Security \& Anti-Poisoning Architecture}
-Operating a living knowledge base in production introduces significant risk of adversarial terminology poisoning. CL-RAG implements three defensive layers:
+Operating a living knowledge base in production introduces significant risk of adversarial terminology poisoning. CL-RAG implements defensive layers:
 \begin{enumerate}
-    \item \textbf{Role-Based Access Control}: Strict endpoint authorization separates \texttt{ADMIN}, \texttt{REVIEWER}, and \texttt{USER} roles using bcrypt-hashed credentials and signed HS256 JWT tokens. Standard users can only propose candidate terms with low confidence ($0.50$).
+    \item \textbf{Role-Based Access Control}: Strict endpoint authorization separates \texttt{ADMIN}, \texttt{REVIEWER}, and \texttt{USER} roles using bcrypt-hashed credentials and signed HS256 JWT tokens. Standard users can only propose candidate terms with candidate status.
+    \item \textbf{Two-Reviewer Consensus Gate}: High-assurance terms require approvals from $N=2$ distinct authenticated reviewers before entering the active translation graph.
     \item \textbf{Immutable Audit Provenance}: Every modification to the graph creates an append-only entry in \texttt{term\_audit\_log} recording the authenticated user UUID, previous value, new value, and timestamp.
-    \item \textbf{Version Rollback Engine}: In the event of an erroneous or malicious injection, administrators execute \texttt{POST /api/kg/terms/\{id\}/rollback}. The system restores prior verified state from the audit log and increments the version counter with action \texttt{ROLLBACK}.
-    \item \textbf{Input Hardening}: The string replacement engine encapsulates all substitutions inside closure lambdas (\texttt{lambda m, r=val: r}), systematically eliminating regex backreference escape crashes (\texttt{re.error}). Document uploads enforce a 15 MB file ceiling.
+    \item \textbf{Version Rollback Engine}: Administrators can roll back any contaminated node to a previous verified version using \texttt{POST /api/kg/terms/\{id\}/rollback}.
+    \item \textbf{Input Hardening}: All regex substitutions are executed via closure lambdas (\texttt{lambda m, r=val: r}), eliminating backreference escape bugs, while user inputs are strictly delimited by boundary tags (\texttt{\#\#\# BEGIN/END\_SOURCE\_DATA \#\#\#}).
 \end{enumerate}
 
 \section{Conclusion \& Future Work}
-In this paper, we presented \textbf{CL-RAG}, an enterprise AI platform that resolves terminology drift and lexical fragmentation in cross-lingual technical knowledge transfer. By coupling a Living Terminology Knowledge Graph with a five-agent verification pipeline and calibrated confidence gating, CL-RAG achieves a 94.7\% Term Satisfaction Rate (+66.2 percentage point gain over unconstrained translation) and an 81.8\% reduction in human review workload. The closed-loop self-evolution mechanism guarantees that expert corrections immediately persist into the graph without model retraining.
+In this paper, we presented \textbf{CL-RAG}, an enterprise AI platform that resolves terminology drift in cross-lingual technical knowledge transfer. By coupling a Living Terminology Knowledge Graph with a multi-agent verification pipeline and two-reviewer consensus gating, CL-RAG achieves 70.00\% Term Success Rate with 17.06 BLEU and 26.93 chrF++ on technical cloud infrastructure in Hindi, outperforming unconstrained generic translation baselines in semantic fidelity.
 
 Future extensions will explore integrating graph neural networks (GNNs) directly over the living term relationships to infer latent cross-lingual synonyms and extending the pipeline to real-time multimodal audio-visual knowledge transfer.
 

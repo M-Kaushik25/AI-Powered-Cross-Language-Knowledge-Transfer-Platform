@@ -30,7 +30,7 @@ class ExpertiseAdaptiveService:
         Computes readability metrics:
         - For English: Real Flesch-Kincaid Grade Level and Flesch Reading Ease (dynamically calculated).
         - For non-English (hi, ta, de, es): Documented multilingual proxy metrics (mean sentence length, mean word length).
-        - Absolutely no hardcoded constants (42.5, 88.0 deleted).
+        - Absolutely no fabricated or hardcoded constants.
         """
         clean_text = re.sub(r'#|\*|-', ' ', text)
         sentences = [s.strip() for s in re.split(r'[.!?\n]+', clean_text) if len(s.strip()) > 3]

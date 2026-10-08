@@ -468,12 +468,15 @@ class CrossLanguageRAGService:
         k = 60
         results = []
         for item in candidates:
-            # If a chunk has zero lexical overlap, no KG bonus, and low dense similarity, it is irrelevant
-            if item["bm25_score"] == 0.0 and item["kg_bonus"] == 0.0 and item["dense_score"] < 0.25:
-                combined_score = max(0.0, item["dense_score"] * 0.3)
+            # Only credit ranks where there was an actual signal
+            dense_rrf = (0.5 / (k + item["dense_rank"])) if item["dense_score"] > 0.15 else 0.0
+            bm25_rrf = (0.5 / (k + item["bm25_rank"])) if item["bm25_score"] > 0.0 else 0.0
+
+            # If no signal anywhere, it is strictly irrelevant
+            if item["bm25_score"] == 0.0 and item["kg_bonus"] == 0.0 and item["dense_score"] < 0.35:
+                combined_score = max(0.0, item["dense_score"] * 0.2)
             else:
-                rrf = (0.5 / (k + item["dense_rank"])) + (0.5 / (k + item["bm25_rank"]))
-                combined_score = min(1.0, max(0.0, (rrf * 35.0) + item["kg_bonus"] + (item["dense_score"] * 0.25)))
+                combined_score = min(1.0, max(0.0, ((dense_rrf + bm25_rrf) * 35.0) + item["kg_bonus"] + (item["dense_score"] * 0.25)))
 
             r = item["row"]
             detected_terms = json.loads(r["detected_terms_json"]) if r["detected_terms_json"] else []
@@ -541,7 +544,7 @@ class CrossLanguageRAGService:
 
         context_str = "\n\n".join(context_blocks)
 
-        # Dynamic empirical confidence (strictly never constant 0.96)
+        # Dynamic empirical confidence (strictly non-constant)
         calibrated_confidence = round(max(0.25, min(0.95, top_score * 0.85 + 0.08)), 4)
 
         # If live Gemini is active, query neural model

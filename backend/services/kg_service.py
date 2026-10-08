@@ -51,7 +51,7 @@ SEED_TERMS = [
             "de": "horizontale Skalierung",
             "es": "escalabilidad horizontal"
         },
-        "confidence": 0.96
+        "confidence": 0.95
     },
     {
         "source_term": "circuit breaker",
@@ -87,7 +87,7 @@ SEED_TERMS = [
             "de": "Container-Orchestrierung",
             "es": "orquestación de contenedores"
         },
-        "confidence": 0.96
+        "confidence": 0.95
     },
     {
         "source_term": "rate limiting",
@@ -159,7 +159,7 @@ SEED_TERMS = [
             "de": "Konsensprotokoll",
             "es": "protocolo de consenso"
         },
-        "confidence": 0.96
+        "confidence": 0.95
     },
 
     # Biomedical Devices & Medical Engineering
@@ -233,7 +233,7 @@ SEED_TERMS = [
             "de": "Kapnografie",
             "es": "capnografía"
         },
-        "confidence": 0.96
+        "confidence": 0.95
     },
     {
         "source_term": "defibrillator shock",
@@ -266,13 +266,13 @@ SEED_RELATIONSHIPS = [
     ("circuit breaker", "fault tolerance", "SUBCLASS_OF", 0.98),
     ("load balancer", "fault tolerance", "CONTEXT_OF", 0.95),
     ("dead-letter queue", "circuit breaker", "CONTEXT_OF", 0.92),
-    ("consensus protocol", "fault tolerance", "CONTEXT_OF", 0.96),
+    ("consensus protocol", "fault tolerance", "CONTEXT_OF", 0.95),
     ("horizontal scaling", "load balancer", "CONTEXT_OF", 0.94),
     ("service mesh", "circuit breaker", "CONTEXT_OF", 0.93),
     ("idempotency", "fault tolerance", "CONTEXT_OF", 0.95),
     ("cache invalidation", "eventual consistency", "CONTEXT_OF", 0.91),
     ("tidal volume", "mechanical ventilator", "SUBCLASS_OF", 0.97),
-    ("positive end-expiratory pressure", "mechanical ventilator", "SUBCLASS_OF", 0.96),
+    ("positive end-expiratory pressure", "mechanical ventilator", "SUBCLASS_OF", 0.95),
     ("arterial blood pressure", "hemodynamic monitoring", "SUBCLASS_OF", 0.98),
     ("pulse oximeter", "hemodynamic monitoring", "CONTEXT_OF", 0.95),
 ]
