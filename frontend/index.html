@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CL-RAG // Cross-Language Knowledge Transfer Platform</title>
+  <meta name="description" content="AI-Powered Cross-Language Knowledge Transfer Platform with Living Terminology Knowledge Graph, Multi-Agent Verification, and Confidence-Gated Human Review.">
+  
+  <!-- Modern Google Typography -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  
+  <!-- Chart.js for IEEE Evaluation Ablation Graphs -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="app-container">
+
+  <!-- ─────────────────────────────────────────────────────────────
+       Sidebar Navigation
+       ───────────────────────────────────────────────────────────── -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <div class="brand-badge"><i class="fa-solid fa-atom"></i> IEEE RESEARCH PLATFORM</div>
+      <h1 class="brand-title">CL-RAG PLATFORM</h1>
+      <div class="brand-subtitle">Cross-Language Knowledge Transfer Engine</div>
+    </div>
+
+    <nav class="sidebar-nav">
+      <div class="nav-section-title">Core Systems</div>
+      
+      <div class="nav-item active" data-tab="dashboard">
+        <i class="fa-solid fa-chart-pie"></i>
+        <span>Dashboard & Telemetry</span>
+      </div>
+
+      <div class="nav-item" data-tab="translate">
+        <i class="fa-solid fa-microchip"></i>
+        <span>Multi-Agent Studio</span>
+      </div>
+
+      <div class="nav-item" data-tab="kg">
+        <i class="fa-solid fa-network-wired"></i>
+        <span>Living Terminology KG</span>
+      </div>
+
+      <div class="nav-item" data-tab="review">
+        <i class="fa-solid fa-user-shield"></i>
+        <span>Review Queue</span>
+        <span class="nav-badge" id="review-badge-count">0</span>
+      </div>
+
+      <div class="nav-item" data-tab="adaptive">
+        <i class="fa-solid fa-graduation-cap"></i>
+        <span>Expertise Adaptation Lab</span>
+      </div>
+
+      <div class="nav-section-title">Knowledge & Retrieval</div>
+
+      <div class="nav-item" data-tab="chat">
+        <i class="fa-solid fa-comments"></i>
+        <span>CL-RAG Cross-Lingual Chat</span>
+      </div>
+
+      <div class="nav-item" data-tab="documents">
+        <i class="fa-solid fa-folder-open"></i>
+        <span>Knowledge Spaces</span>
+      </div>
+
+      <div class="nav-section-title">IEEE Evaluation</div>
+
+      <div class="nav-item" data-tab="eval">
+        <i class="fa-solid fa-chart-line"></i>
+        <span>Evaluation & Ablation Hub</span>
+      </div>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="system-status-indicator">
+        <span class="status-dot"></span>
+        <span id="system-mode-text">Local Deterministic Engine</span>
+      </div>
+      <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 11px;" id="btn-open-settings" title="Configure API Keys & Parameters">
+        <i class="fa-solid fa-gear"></i>
+      </button>
+    </div>
+  </aside>
+
+  <!-- ─────────────────────────────────────────────────────────────
+       Main Content Header + Views
+       ───────────────────────────────────────────────────────────── -->
+  <main class="main-wrapper">
+    <header class="top-header">
+      <div class="header-left">
+        <div class="page-title" id="current-view-title">Dashboard & Telemetry</div>
+      </div>
+
+      <div class="header-right">
+        <!-- Target Domain Selector -->
+        <select class="select-control" id="global-domain-select" title="Active Domain Context">
+          <option value="cloud_computing">Domain: Cloud & Distributed Systems</option>
+          <option value="biomedical_devices">Domain: Biomedical Devices & Clinical</option>
+        </select>
+
+        <!-- Target Language Selector -->
+        <select class="select-control" id="global-target-lang" title="Target Translation Language">
+          <option value="hi">Target: Hindi (हिंदी)</option>
+          <option value="ta">Target: Tamil (தமிழ்)</option>
+          <option value="de">Target: German (Deutsch)</option>
+          <option value="es">Target: Spanish (Español)</option>
+          <option value="en">Target: English (en)</option>
+        </select>
+
+        <!-- Confidence Threshold Badge -->
+        <div class="badge-tag badge-verified" id="gating-threshold-badge" title="Gating Threshold: Terms below this confidence route to Human Review">
+          <i class="fa-solid fa-filter"></i> Gate: &tau; &ge; 0.85
+        </div>
+      </div>
+    </header>
+
+    <div class="content-scrollable">
+
+      <!-- ─────────────────────────────────────────────────────────
+           VIEW 1: Dashboard & Telemetry
+           ───────────────────────────────────────────────────────── -->
+      <section id="view-dashboard" class="tab-view active">
+        <div class="metric-grid">
+          <div class="metric-card">
+            <div class="metric-label">Living KG Nodes</div>
+            <div class="metric-value" id="stat-kg-nodes">--</div>
+            <div class="metric-sub"><i class="fa-solid fa-circle-check"></i> Versioned Domain Terms</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Indexed Documents</div>
+            <div class="metric-value" id="stat-docs-indexed">--</div>
+            <div class="metric-sub"><i class="fa-solid fa-file-lines"></i> Multi-Format Knowledge</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Semantic Chunks</div>
+            <div class="metric-value" id="stat-chunks">--</div>
+            <div class="metric-sub"><i class="fa-solid fa-cubes"></i> Vector Embeddings Pinned</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Review Queue</div>
+            <div class="metric-value" style="color: var(--accent-amber);" id="stat-pending-reviews">0</div>
+            <div class="metric-sub" style="color: var(--accent-amber);"><i class="fa-solid fa-clock"></i> Confidence &lt; 0.85</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Self-Evolution Updates</div>
+            <div class="metric-value" style="color: var(--accent-emerald);" id="stat-self-evolution">0</div>
+            <div class="metric-sub" style="color: var(--accent-emerald);"><i class="fa-solid fa-code-branch"></i> KG Versions Incremented</div>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 24px;">
+          <!-- System Architecture & Novelty Card -->
+          <div class="glass-card">
+            <h3 style="font-family: var(--font-display); font-size: 16px; margin-bottom: 12px;">
+              <i class="fa-solid fa-diagram-project" style="color: var(--accent-primary);"></i>
+              Platform Novelty Architecture (IEEE Research Framing)
+            </h3>
+            <p style="color: var(--text-secondary); margin-bottom: 16px; font-size: 13.5px;">
+              This system extends multi-agent machine translation (AIDA_term baseline) by introducing:
+            </p>
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+              <div style="background: rgba(255,255,255,0.03); padding: 12px 16px; border-radius: var(--radius-sm); border-left: 3px solid var(--accent-primary);">
+                <strong>1. Living Terminology Knowledge Graph:</strong> Terms are persistent, versioned nodes with approved translations. Reviewer edits dynamically increment versions and self-evolve the knowledge base.
+              </div>
+              <div style="background: rgba(255,255,255,0.03); padding: 12px 16px; border-radius: var(--radius-sm); border-left: 3px solid var(--accent-cyan);">
+                <strong>2. Multi-Agent Verification with Calibrated Confidence:</strong> Translator, Terminology-Verifier (symbolic check), and Domain-Critic agents calibrate confidence per segment.
+              </div>
+              <div style="background: rgba(255,255,255,0.03); padding: 12px 16px; border-radius: var(--radius-sm); border-left: 3px solid var(--accent-amber);">
+                <strong>3. Confidence-Gated Review Queue:</strong> Instead of uniform 100% manual review, only low-confidence spans (&lt; 0.85) are routed to human reviewers, reducing review volume by &gt;90%.
+              </div>
+              <div style="background: rgba(255,255,255,0.03); padding: 12px 16px; border-radius: var(--radius-sm); border-left: 3px solid var(--accent-emerald);">
+                <strong>4. Expertise-Adaptive Summarization:</strong> Outputs restructured for Novice (intuitive analogies) vs. Expert (formal specs and SLAs) readers.
+              </div>
+            </div>
+          </div>
+
+          <!-- Quick Actions & Pipeline Trigger -->
+          <div class="glass-card" style="display: flex; flex-direction: column; justify-content: space-between;">
+            <div>
+              <h3 style="font-family: var(--font-display); font-size: 16px; margin-bottom: 12px;">Quick Actions</h3>
+              <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 16px;">
+                Execute end-to-end demonstrations across the novel research pipeline:
+              </p>
+              <div style="display: flex; flex-direction: column; gap: 10px;">
+                <button class="btn btn-primary" id="btn-quick-multiagent">
+                  <i class="fa-solid fa-play"></i> Run Multi-Agent Studio
+                </button>
+                <button class="btn btn-secondary" id="btn-quick-kg">
+                  <i class="fa-solid fa-network-wired"></i> Inspect Terminology Graph
+                </button>
+                <button class="btn btn-secondary" id="btn-quick-ablation">
+                  <i class="fa-solid fa-chart-line"></i> Run Ablation Benchmark
+                </button>
+              </div>
+            </div>
+            <div style="margin-top: 20px; padding: 12px; background: rgba(139, 92, 246, 0.1); border-radius: var(--radius-sm); font-size: 12px; color: #c4b5fd;">
+              <i class="fa-solid fa-circle-info"></i> Designed for Final-Year Defense & IEEE Paper Evaluation.
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ─────────────────────────────────────────────────────────
+           VIEW 2: Multi-Agent Translation Studio
+           ───────────────────────────────────────────────────────── -->
+      <section id="view-translate" class="tab-view" style="display: none;">
+        <div class="agent-pipeline-container">
+          <!-- Input Card -->
+          <div class="glass-card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+              <h3 style="font-family: var(--font-display); font-size: 16px;">
+                <i class="fa-solid fa-file-code" style="color: var(--accent-primary);"></i> Source Technical Document Segment
+              </h3>
+              <button class="btn btn-secondary" style="font-size: 12px;" id="btn-load-sample-sentence">
+                <i class="fa-solid fa-sparkles"></i> Load Technical Sample
+              </button>
+            </div>
+            <textarea class="textarea-control" id="translate-input-text" placeholder="Enter or paste technical sentences with domain terminology (e.g., fault tolerance, load balancer, circuit breaker, eventual consistency)...">Fault tolerance is essential for modern cloud infrastructure to prevent downtime. A reliable load balancer manages traffic distribution and horizontal scaling across clusters.</textarea>
+            <div style="display: flex; justify-content: flex-end; margin-top: 14px; gap: 12px;">
+              <button class="btn btn-primary" id="btn-run-translation">
+                <i class="fa-solid fa-microchip"></i> Execute Multi-Agent Pipeline
+              </button>
+            </div>
+          </div>
+
+          <!-- Live Multi-Agent Execution Telemetry -->
+          <div id="agent-results-container" style="display: none; flex-direction: column; gap: 20px;">
+            <!-- Summary Bar -->
+            <div class="glass-card" style="padding: 16px 24px; display: flex; align-items: center; justify-content: space-between;">
+              <div style="display: flex; align-items: center; gap: 20px;">
+                <div>
+                  <span style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Avg Confidence</span>
+                  <div style="font-family: var(--font-display); font-size: 20px; font-weight: 700; color: var(--accent-emerald);" id="telemetry-avg-conf">0.96</div>
+                </div>
+                <div>
+                  <span style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Term-Usage Rate</span>
+                  <div style="font-family: var(--font-display); font-size: 20px; font-weight: 700; color: var(--accent-cyan);" id="telemetry-tsr">100%</div>
+                </div>
+                <div>
+                  <span style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Review Routing</span>
+                  <div style="font-family: var(--font-display); font-size: 20px; font-weight: 700;" id="telemetry-routing-status">Automated</div>
+                </div>
+              </div>
+              <div id="telemetry-badge-container"></div>
+            </div>
+
+            <!-- Agent Roles Cards Row -->
+            <div class="agent-cards-row">
+              <!-- Agent 1: Translator -->
+              <div class="agent-card">
+                <div class="agent-card-header">
+                  <div class="agent-name"><i class="fa-solid fa-language" style="color: var(--accent-primary);"></i> Agent 1: Translator</div>
+                  <span class="badge-tag badge-verified">Generated</span>
+                </div>
+                <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">Per-Segment Constraint Injection</div>
+                <div id="agent-1-output" style="font-size: 13.5px; line-height: 1.6; color: var(--text-primary); flex: 1;">--</div>
+              </div>
+
+              <!-- Agent 2: Terminology-Verifier -->
+              <div class="agent-card">
+                <div class="agent-card-header">
+                  <div class="agent-name"><i class="fa-solid fa-check-double" style="color: var(--accent-emerald);"></i> Agent 2: Verifier</div>
+                  <span class="badge-tag badge-verified" id="agent-2-status">Symbolic Match</span>
+                </div>
+                <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">Symbolic Constraint Verification</div>
+                <div id="agent-2-explanation" style="font-size: 13px; line-height: 1.5; color: var(--text-secondary); flex: 1;">--</div>
+                <div class="confidence-gauge-bar">
+                  <div class="confidence-fill" id="agent-2-bar" style="width: 100%;"></div>
+                </div>
+              </div>
+
+              <!-- Agent 3: Domain-Critic -->
+              <div class="agent-card">
+                <div class="agent-card-header">
+                  <div class="agent-name"><i class="fa-solid fa-stethoscope" style="color: var(--accent-cyan);"></i> Agent 3: Critic</div>
+                  <span class="badge-tag badge-verified" id="agent-3-status">Semantic Pass</span>
+                </div>
+                <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">Semantic Drift & Register Audit</div>
+                <div id="agent-3-notes" style="font-size: 13px; line-height: 1.5; color: var(--text-secondary); flex: 1;">--</div>
+                <div class="confidence-gauge-bar">
+                  <div class="confidence-fill" id="agent-3-bar" style="width: 95%;"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Full Translated Output Panel -->
+            <div class="glass-card">
+              <h4 style="font-family: var(--font-display); font-size: 15px; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
+                <span><i class="fa-solid fa-award" style="color: var(--accent-emerald);"></i> Verified Technical Translation</span>
+                <button class="btn btn-secondary" style="font-size: 12px; padding: 4px 10px;" id="btn-copy-translation">
+                  <i class="fa-solid fa-copy"></i> Copy
+                </button>
+              </h4>
+              <div id="final-translation-text" style="font-size: 15px; line-height: 1.7; background: var(--bg-surface-elevated); padding: 18px; border-radius: var(--radius-md); border: 1px solid var(--border-subtle);">
+                --
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ─────────────────────────────────────────────────────────
+           VIEW 3: Living Terminology Knowledge Graph (T-KG)
+           ───────────────────────────────────────────────────────── -->
+      <section id="view-kg" class="tab-view" style="display: none;">
+        <div class="glass-card" style="margin-bottom: 24px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
+            <div>
+              <h3 style="font-family: var(--font-display); font-size: 18px; margin-bottom: 4px;">Living Terminology Knowledge Graph</h3>
+              <p style="color: var(--text-secondary); font-size: 13px;">
+                Self-updating domain terminology nodes with provenance tracking, approved multilingual translations, and version history.
+              </p>
+            </div>
+            <div style="display: flex; gap: 12px;">
+              <input type="text" class="chat-input" style="width: 240px; padding: 8px 14px;" id="kg-search-input" placeholder="Search terminology...">
+              <button class="btn btn-primary" id="btn-open-add-term-modal">
+                <i class="fa-solid fa-plus"></i> Add Term Node
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="glass-card" style="padding: 0; overflow: hidden;">
+          <table class="data-table" id="kg-terms-table">
+            <thead>
+              <tr>
+                <th>Source Term (EN)</th>
+                <th>Domain</th>
+                <th>Target Translations (HI / TA / DE / ES)</th>
+                <th>Version</th>
+                <th>Confidence</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="kg-terms-tbody">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ─────────────────────────────────────────────────────────
+           VIEW 4: Confidence-Gated Review Hub (Self-Evolution Loop)
+           ───────────────────────────────────────────────────────── -->
+      <section id="view-review" class="tab-view" style="display: none;">
+        <div class="glass-card" style="margin-bottom: 24px; border-left: 4px solid var(--accent-amber);">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
+            <div>
+              <h3 style="font-family: var(--font-display); font-size: 18px; margin-bottom: 4px;">
+                <i class="fa-solid fa-user-shield" style="color: var(--accent-amber);"></i>
+                Confidence-Gated Human Review Queue
+              </h3>
+              <p style="color: var(--text-secondary); font-size: 13px;">
+                Only low-confidence term translations (&lt; &tau; = 0.85) are routed here. When you approve or edit a translation, the <strong>Living Knowledge Graph self-updates</strong> and increments its version, automatically improving all future translations!
+              </p>
+            </div>
+            <button class="btn btn-secondary" id="btn-refresh-review-queue">
+              <i class="fa-solid fa-arrows-rotate"></i> Refresh Queue
+            </button>
+          </div>
+        </div>
+
+        <div id="review-queue-list" style="display: flex; flex-direction: column; gap: 16px;">
+          <!-- Dynamically populated review cards -->
+        </div>
+      </section>
+
+      <!-- ─────────────────────────────────────────────────────────
+           VIEW 5: Expertise-Adaptive Summarization Lab
+           ───────────────────────────────────────────────────────── -->
+      <section id="view-adaptive" class="tab-view" style="display: none;">
+        <div class="glass-card" style="margin-bottom: 24px;">
+          <h3 style="font-family: var(--font-display); font-size: 18px; margin-bottom: 6px;">
+            <i class="fa-solid fa-graduation-cap" style="color: var(--accent-primary);"></i>
+            Expertise-Adaptive Summarization Lab
+          </h3>
+          <p style="color: var(--text-secondary); font-size: 13px; margin-bottom: 16px;">
+            Fulfills the "adapts" contribution: the platform restructures the same technical knowledge for a Novice reader (intuitive analogies, plain terms) vs. an Expert reader (formal SLAs, invariants, and specs) in the target language.
+          </p>
+          <textarea class="textarea-control" id="adaptive-input-text" placeholder="Enter technical text to adapt...">The cluster implements an active circuit breaker pattern alongside eventual consistency to prevent cascading network failures across distributed microservices. Write operations enforce strict idempotency to safely handle retries from dead-letter queues.</textarea>
+          <div style="display: flex; justify-content: flex-end; margin-top: 14px;">
+            <button class="btn btn-primary" id="btn-run-adaptation">
+              <i class="fa-solid fa-wand-magic-sparkles"></i> Generate Dual Adaptations
+            </button>
+          </div>
+        </div>
+
+        <div id="adaptive-results-row" style="display: none; grid-template-columns: 1fr 1fr; gap: 24px;">
+          <!-- Novice Column -->
+          <div class="glass-card" style="border-top: 3px solid var(--accent-cyan);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+              <span class="badge-tag" style="background: rgba(6, 182, 212, 0.15); color: #22d3ee; border: 1px solid rgba(6, 182, 212, 0.3);">
+                <i class="fa-solid fa-seedling"></i> NOVICE READER LEVEL
+              </span>
+              <span style="font-size: 12px; color: var(--text-muted);" id="novice-complexity-tag">Reading Complexity: Low (42.5)</span>
+            </div>
+            <div id="novice-output-content" style="font-size: 14px; line-height: 1.7; color: var(--text-primary); white-space: pre-wrap;">--</div>
+          </div>
+
+          <!-- Expert Column -->
+          <div class="glass-card" style="border-top: 3px solid var(--accent-primary);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+              <span class="badge-tag" style="background: rgba(139, 92, 246, 0.15); color: #c4b5fd; border: 1px solid rgba(139, 92, 246, 0.3);">
+                <i class="fa-solid fa-microchip"></i> SENIOR ARCHITECT / EXPERT
+              </span>
+              <span style="font-size: 12px; color: var(--text-muted);" id="expert-complexity-tag">Reading Complexity: Rigorous (88.0)</span>
+            </div>
+            <div id="expert-output-content" style="font-size: 14px; line-height: 1.7; color: var(--text-primary); white-space: pre-wrap;">--</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ─────────────────────────────────────────────────────────
+           VIEW 6: CL-RAG Cross-Lingual Conversational Chat
+           ───────────────────────────────────────────────────────── -->
+      <section id="view-chat" class="tab-view" style="display: none;">
+        <div class="chat-container">
+          <div class="chat-messages" id="chat-messages-list">
+            <div class="chat-bubble assistant">
+              <div style="font-weight: 600; color: var(--accent-primary); margin-bottom: 4px;">
+                <i class="fa-solid fa-robot"></i> CL-RAG Multilingual Assistant
+              </div>
+              <div>
+                Welcome to the Cross-Language Retrieval system. You can ask questions in <strong>Hindi, Tamil, German, Spanish, or English</strong> about the indexed technical documents. Every answer is grounded with direct source citations and terminology verification.
+              </div>
+            </div>
+          </div>
+
+          <div class="chat-input-bar">
+            <input type="text" class="chat-input" id="chat-query-input" placeholder="Ask a question in any language (e.g., 'What is fault tolerance in this document?' or 'இந்த ஆவணத்தில் load balancer என்ன செய்கிறது?')...">
+            <button class="btn btn-primary" id="btn-send-chat">
+              <i class="fa-solid fa-paper-plane"></i> Ask
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ─────────────────────────────────────────────────────────
+           VIEW 7: Knowledge Spaces & Documents
+           ───────────────────────────────────────────────────────── -->
+      <section id="view-documents" class="tab-view" style="display: none;">
+        <div class="glass-card" style="margin-bottom: 24px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
+            <div>
+              <h3 style="font-family: var(--font-display); font-size: 18px; margin-bottom: 4px;">Knowledge Spaces & Document Ingestion</h3>
+              <p style="color: var(--text-secondary); font-size: 13px;">
+                Indexed technical manuals and specifications parsed into semantic chunks with vector embeddings and pinned terminology.
+              </p>
+            </div>
+            <div style="display: flex; gap: 12px;">
+              <button class="btn btn-primary" id="btn-open-upload-modal">
+                <i class="fa-solid fa-file-arrow-up"></i> Ingest New Document
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div id="documents-list-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px;">
+          <!-- Dynamically populated document cards -->
+        </div>
+      </section>
+
+      <!-- ─────────────────────────────────────────────────────────
+           VIEW 8: IEEE Evaluation & Ablation Hub
+           ───────────────────────────────────────────────────────── -->
+      <section id="view-eval" class="tab-view" style="display: none;">
+        <div class="glass-card" style="margin-bottom: 24px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
+            <div>
+              <h3 style="font-family: var(--font-display); font-size: 18px; margin-bottom: 4px;">
+                <i class="fa-solid fa-chart-line" style="color: var(--accent-primary);"></i>
+                IEEE Empirical Evaluation & Ablation Hub
+              </h3>
+              <p style="color: var(--text-secondary); font-size: 13px;">
+                Isolating the effect of <strong>Self-Updating Living KG</strong> across successive correction rounds. Proves that Term-Usage/Success Rate (TSR) increases while human review volume drops drastically.
+              </p>
+            </div>
+            <button class="btn btn-primary" id="btn-run-ablation-benchmark">
+              <i class="fa-solid fa-flask"></i> Run Multi-Round Ablation
+            </button>
+          </div>
+        </div>
+
+        <!-- Charts Grid -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px;">
+          <div class="glass-card">
+            <h4 style="font-family: var(--font-display); font-size: 15px; margin-bottom: 12px;">
+              Term-Usage Success Rate (TSR %) across Correction Rounds
+            </h4>
+            <div style="height: 260px;">
+              <canvas id="chart-tsr-rounds"></canvas>
+            </div>
+          </div>
+
+          <div class="glass-card">
+            <h4 style="font-family: var(--font-display); font-size: 15px; margin-bottom: 12px;">
+              Human Review Volume Reduction (% vs Full Manual Baseline)
+            </h4>
+            <div style="height: 260px;">
+              <canvas id="chart-review-volume"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- Benchmark Comparison Table -->
+        <div class="glass-card" style="padding: 0; overflow: hidden;">
+          <div style="padding: 16px 20px; border-bottom: 1px solid var(--border-subtle);">
+            <h4 style="font-family: var(--font-display); font-size: 15px;">Comparative Systems Benchmark Table (IEEE Conference Submission)</h4>
+          </div>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>System Configuration</th>
+                <th>Term Success Rate (TSR)</th>
+                <th>Review Gating Mode</th>
+                <th>Review Volume %</th>
+                <th>Self-Updating KG</th>
+                <th>Expertise Adaptation</th>
+              </tr>
+            </thead>
+            <tbody id="eval-benchmark-tbody">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+    </div>
+  </main>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────
+     Modal: Add / Edit Term Node
+     ───────────────────────────────────────────────────────────── -->
+<div class="modal-overlay" id="modal-term">
+  <div class="modal-content">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px;">
+      <h3 style="font-family: var(--font-display); font-size: 18px;">Living KG Term Node</h3>
+      <button class="btn btn-secondary" style="padding: 4px 8px;" onclick="closeModal('modal-term')"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <form id="form-add-term" style="display: flex; flex-direction: column; gap: 14px;">
+      <div>
+        <label style="font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 4px;">Source English Term</label>
+        <input type="text" class="chat-input" id="term-modal-source" required placeholder="e.g., zero-trust architecture">
+      </div>
+      <div>
+        <label style="font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 4px;">Domain</label>
+        <select class="select-control" style="width: 100%;" id="term-modal-domain">
+          <option value="cloud_computing">Cloud Computing</option>
+          <option value="distributed_systems">Distributed Systems</option>
+          <option value="biomedical_devices">Biomedical Devices</option>
+        </select>
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 12px;">
+        <div>
+          <label style="font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 4px;">Target Language</label>
+          <select class="select-control" style="width: 100%;" id="term-modal-lang">
+            <option value="hi">Hindi (hi)</option>
+            <option value="ta">Tamil (ta)</option>
+            <option value="de">German (de)</option>
+            <option value="es">Spanish (es)</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 4px;">Approved Translation</label>
+          <input type="text" class="chat-input" id="term-modal-trans" required placeholder="Target term translation">
+        </div>
+      </div>
+      <div>
+        <label style="font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 4px;">Definition / Context</label>
+        <textarea class="textarea-control" style="min-height: 80px;" id="term-modal-def" placeholder="Technical definition and usage notes..."></textarea>
+      </div>
+      <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 10px;">
+        <button type="button" class="btn btn-secondary" onclick="closeModal('modal-term')">Cancel</button>
+        <button type="submit" class="btn btn-primary"><i class="fa-solid fa-save"></i> Save & Self-Update</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────
+     Modal: Document Ingest
+     ───────────────────────────────────────────────────────────── -->
+<div class="modal-overlay" id="modal-document">
+  <div class="modal-content">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px;">
+      <h3 style="font-family: var(--font-display); font-size: 18px;">Ingest Knowledge Document</h3>
+      <button class="btn btn-secondary" style="padding: 4px 8px;" onclick="closeModal('modal-document')"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <form id="form-upload-doc" style="display: flex; flex-direction: column; gap: 14px;">
+      <div>
+        <label style="font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 4px;">Document Title / Filename</label>
+        <input type="text" class="chat-input" id="doc-modal-filename" required placeholder="e.g., distributed_consensus_specs.txt">
+      </div>
+      <div>
+        <label style="font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 4px;">Knowledge Space</label>
+        <select class="select-control" style="width: 100%;" id="doc-modal-space-select">
+          <!-- Populated dynamically -->
+        </select>
+      </div>
+      <div>
+        <label style="font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 4px;">Document Content</label>
+        <textarea class="textarea-control" style="min-height: 160px;" id="doc-modal-content" required placeholder="Paste technical document text here..."></textarea>
+      </div>
+      <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 10px;">
+        <button type="button" class="btn btn-secondary" onclick="closeModal('modal-document')">Cancel</button>
+        <button type="submit" class="btn btn-primary"><i class="fa-solid fa-cloud-arrow-up"></i> Ingest & Vectorize</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────
+     Modal: Settings & API Config
+     ───────────────────────────────────────────────────────────── -->
+<div class="modal-overlay" id="modal-settings">
+  <div class="modal-content">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px;">
+      <h3 style="font-family: var(--font-display); font-size: 18px;">System & Engine Settings</h3>
+      <button class="btn btn-secondary" style="padding: 4px 8px;" onclick="closeModal('modal-settings')"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 16px;">
+      <div>
+        <label style="font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 4px;">Confidence Gating Threshold (&tau;)</label>
+        <input type="number" step="0.05" min="0.5" max="0.99" class="chat-input" id="settings-threshold" value="0.85">
+        <span style="font-size: 11px; color: var(--text-muted);">Translations with confidence &lt; &tau; are routed to the Human Review Queue.</span>
+      </div>
+      <div>
+        <label style="font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 4px;">Google Gemini API Key (Optional)</label>
+        <input type="password" class="chat-input" id="settings-gemini-key" placeholder="AIzaSy... (Leave empty for Deterministic Offline Engine)">
+        <span style="font-size: 11px; color: var(--text-muted);">If empty, the high-fidelity offline deterministic engine runs for immediate viva demonstrations.</span>
+      </div>
+      <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 10px;">
+        <button class="btn btn-secondary" onclick="closeModal('modal-settings')">Close</button>
+        <button class="btn btn-primary" id="btn-save-settings"><i class="fa-solid fa-check"></i> Apply Settings</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast Notification Container -->
+<div class="toast" id="toast-notification">
+  <i class="fa-solid fa-circle-check" style="color: var(--accent-emerald);"></i>
+  <span id="toast-message">Notification text</span>
+</div>
+
+<script src="js/app.js"></script>
+</body>
+</html>

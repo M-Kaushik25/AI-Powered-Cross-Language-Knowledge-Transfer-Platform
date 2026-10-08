@@ -1,0 +1,114 @@
+import uuid
+import json
+from datetime import datetime
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form
+from pydantic import BaseModel
+from typing import Optional, List
+from backend.database import get_db
+from backend.services.rag_service import rag_service
+
+router = APIRouter(prefix="/api/documents", tags=["Documents & Knowledge Spaces"])
+
+class SpaceCreateRequest(BaseModel):
+    name: str
+    description: Optional[str] = None
+    domain: Optional[str] = "cloud_computing"
+    default_lang: Optional[str] = "en"
+
+class DirectDocumentIngestRequest(BaseModel):
+    space_id: str
+    filename: str
+    content: str
+    domain: Optional[str] = "cloud_computing"
+
+@router.get("/spaces")
+def list_spaces():
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM knowledge_spaces ORDER BY created_at DESC")
+        spaces = cursor.fetchall()
+        
+        # Attach doc count
+        for s in spaces:
+            cursor.execute("SELECT COUNT(*) as doc_count FROM documents WHERE space_id = ?", (s["id"],))
+            s["doc_count"] = cursor.fetchone()["doc_count"]
+            
+    return spaces
+
+@router.post("/spaces")
+def create_space(req: SpaceCreateRequest):
+    now = datetime.utcnow().isoformat()
+    space_id = str(uuid.uuid4())
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM users LIMIT 1")
+        user_row = cursor.fetchone()
+        user_id = user_row["id"] if user_row else "default_user"
+        cursor.execute("""
+            INSERT INTO knowledge_spaces (id, user_id, name, description, domain, default_lang, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (space_id, user_id, req.name, req.description, req.domain, req.default_lang, now))
+    return {
+        "id": space_id,
+        "name": req.name,
+        "domain": req.domain,
+        "created_at": now
+    }
+
+@router.get("")
+def list_documents(space_id: Optional[str] = None):
+    with get_db() as conn:
+        cursor = conn.cursor()
+        if space_id:
+            cursor.execute("SELECT * FROM documents WHERE space_id = ? ORDER BY created_at DESC", (space_id,))
+        else:
+            cursor.execute("SELECT * FROM documents ORDER BY created_at DESC")
+        return cursor.fetchall()
+
+@router.post("/ingest-text")
+def ingest_text_document(req: DirectDocumentIngestRequest):
+    if not req.content.strip():
+        raise HTTPException(status_code=400, detail="Document content cannot be empty")
+        
+    res = rag_service.ingest_document(
+        space_id=req.space_id,
+        filename=req.filename,
+        content=req.content,
+        file_type="txt",
+        domain=req.domain
+    )
+    return res
+
+@router.post("/upload")
+async def upload_document(
+    space_id: str = Form(...),
+    domain: str = Form("cloud_computing"),
+    file: UploadFile = File(...)
+):
+    contents = await file.read()
+    # Try decoding text
+    try:
+        text_content = contents.decode("utf-8")
+    except UnicodeDecodeError:
+        # Fallback text extraction
+        text_content = contents.decode("latin-1", errors="ignore")
+
+    res = rag_service.ingest_document(
+        space_id=space_id,
+        filename=file.filename,
+        content=text_content,
+        file_type=file.filename.split(".")[-1].lower() if "." in file.filename else "txt",
+        domain=domain
+    )
+    return res
+
+@router.get("/{doc_id}/chunks")
+def get_document_chunks(doc_id: str):
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM document_chunks WHERE document_id = ? ORDER BY chunk_index ASC", (doc_id,))
+        chunks = cursor.fetchall()
+        for c in chunks:
+            if c["detected_terms_json"]:
+                c["detected_terms"] = json.loads(c["detected_terms_json"])
+        return chunks
