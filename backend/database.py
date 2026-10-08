@@ -320,6 +320,25 @@ def init_db(db_path: str | None = None):
         if "page_number" not in chunk_cols:
             cursor.execute("ALTER TABLE document_chunks ADD COLUMN page_number INTEGER DEFAULT 1")
 
+        cursor.execute("PRAGMA table_info(terms)")
+        term_cols = [col["name"] for col in cursor.fetchall()]
+        if "concept_id" not in term_cols:
+            cursor.execute("ALTER TABLE terms ADD COLUMN concept_id TEXT")
+        if "created_by" not in term_cols:
+            cursor.execute("ALTER TABLE terms ADD COLUMN created_by TEXT")
+        if "approved_by" not in term_cols:
+            cursor.execute("ALTER TABLE terms ADD COLUMN approved_by TEXT")
+
+        cursor.execute("PRAGMA table_info(review_queue)")
+        rq_cols = [col["name"] for col in cursor.fetchall()]
+        if "reviewed_by" not in rq_cols:
+            cursor.execute("ALTER TABLE review_queue ADD COLUMN reviewed_by TEXT")
+
+        cursor.execute("PRAGMA table_info(term_audit_log)")
+        audit_cols = [col["name"] for col in cursor.fetchall()]
+        if "reviewer_role" not in audit_cols:
+            cursor.execute("ALTER TABLE term_audit_log ADD COLUMN reviewer_role TEXT NOT NULL DEFAULT 'REVIEWER'")
+
 
         # Performance & Tenancy Indexes
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_tenant ON users(tenant_id);")

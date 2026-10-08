@@ -12,13 +12,18 @@ router = APIRouter(prefix="/api/eval", tags=["Evaluation & Ablation Hub"])
 class RunAblationRequest(BaseModel):
     domain: str | None = "cloud_computing"
     target_lang: str | None = "hi"
+    sample_size: int | None = None
 
 @router.post("/run")
 def run_ablation(
     req: RunAblationRequest,
     current_user: dict[str, Any] = Depends(require_role(["ADMIN"]))
 ):
-    return eval_service.run_comprehensive_ablation(domain=req.domain)
+    return eval_service.run_comparative_evaluation(
+        domain=req.domain or "cloud_computing",
+        target_lang=req.target_lang or "hi",
+        sample_size=req.sample_size,
+    )
 
 @router.get("/latest")
 def get_latest_results(
