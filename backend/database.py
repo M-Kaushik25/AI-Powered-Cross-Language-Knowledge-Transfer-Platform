@@ -297,7 +297,7 @@ def init_db(db_path: str | None = None):
         )
         """)
 
-        # Dynamic Tenancy Migration (safely adds tenant_id if existing table lacks it)
+        # Dynamic Column Migrations for backward compatibility
         tables_to_migrate = [
             "users", "knowledge_spaces", "documents", "document_chunks",
             "terms", "term_relationships", "term_audit_log", "review_queue"
@@ -307,6 +307,19 @@ def init_db(db_path: str | None = None):
             columns = [col["name"] for col in cursor.fetchall()]
             if columns and "tenant_id" not in columns:
                 cursor.execute(f"ALTER TABLE {table} ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default_org'")
+
+        cursor.execute("PRAGMA table_info(documents)")
+        doc_cols = [col["name"] for col in cursor.fetchall()]
+        if "user_id" not in doc_cols:
+            cursor.execute("ALTER TABLE documents ADD COLUMN user_id TEXT")
+
+        cursor.execute("PRAGMA table_info(document_chunks)")
+        chunk_cols = [col["name"] for col in cursor.fetchall()]
+        if "embedding_blob" not in chunk_cols:
+            cursor.execute("ALTER TABLE document_chunks ADD COLUMN embedding_blob BLOB")
+        if "page_number" not in chunk_cols:
+            cursor.execute("ALTER TABLE document_chunks ADD COLUMN page_number INTEGER DEFAULT 1")
+
 
         # Performance & Tenancy Indexes
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_tenant ON users(tenant_id);")

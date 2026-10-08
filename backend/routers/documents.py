@@ -9,7 +9,7 @@ from pydantic import BaseModel
 
 from backend.database import get_db
 from backend.services.auth_service import get_current_user
-from backend.services.rag_service import rag_service
+from backend.services.rag_service import parse_document_file, rag_service
 
 router = APIRouter(prefix="/api/documents", tags=["Documents & Knowledge Spaces"])
 
@@ -150,17 +150,13 @@ async def upload_document(
     # Safe sanitized filename
     safe_name = re.sub(r'[^a-zA-Z0-9_.-]', '_', file.filename or 'upload')
 
-    # Try decoding text
-    try:
-        text_content = contents.decode("utf-8")
-    except UnicodeDecodeError:
-        # Fallback text extraction
-        text_content = contents.decode("latin-1", errors="ignore")
+    # Multi-format parsing preserving page and slide numbers
+    parsed_pages = parse_document_file(contents, safe_name, ext)
 
     res = rag_service.ingest_document(
         space_id=space_id,
         filename=safe_name,
-        content=text_content,
+        pages=parsed_pages,
         file_type=ext,
         domain=domain,
         tenant_id=tenant_id,

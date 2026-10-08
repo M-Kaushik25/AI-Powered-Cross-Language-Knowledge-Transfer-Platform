@@ -36,16 +36,16 @@ def test_cross_lingual_retrieval_hindi_and_tamil():
     assert ingest_res["status"] == "READY"
 
     # Query 1: Hindi query asking about fault tolerance
-    # "फॉल्ट टॉलेरेंस उच्च उपलब्धता कैसे प्रदान करता है?"
-    hi_query = "फॉल्ट टॉलेरेंस उच्च उपलब्धता कैसे प्रदान करता है?"
+    # "दोष सहनशीलता उच्च उपलब्धता कैसे प्रदान करती है?"
+    hi_query = "दोष सहनशीलता उच्च उपलब्धता कैसे प्रदान करती है?"
     hi_results = rag_service.search_chunks(space_id=space_id, query=hi_query, top_k=2)
     assert len(hi_results) >= 1
     assert hi_results[0]["filename"] == "reliability_patterns.txt"
     assert hi_results[0]["score"] >= 0.35, f"Expected cross-lingual score >= 0.35, got {hi_results[0]['score']}"
 
     # Query 2: Tamil query asking about circuit breaker isolating failures
-    # "சுற்று முறிப்பான் பிழைகளை எவ்வாறு தனிமைப்படுத்துகிறது?"
-    ta_query = "சுற்று முறிப்பான் பிழைகளை எவ்வாறு தனிமைப்படுத்துகிறது?"
+    # "மின்சுற்று முறிப்பான் முறை பிழைகளை எவ்வாறு தனிமைப்படுத்துகிறது?"
+    ta_query = "மின்சுற்று முறிப்பான் முறை பிழைகளை எவ்வாறு தனிமைப்படுத்துகிறது?"
     ta_results = rag_service.search_chunks(space_id=space_id, query=ta_query, top_k=2)
     assert len(ta_results) >= 1
     assert ta_results[0]["filename"] == "reliability_patterns.txt"

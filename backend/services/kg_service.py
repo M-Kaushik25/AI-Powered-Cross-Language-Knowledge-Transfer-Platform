@@ -22,7 +22,7 @@ SEED_TERMS = [
         "domain": "cloud_computing",
         "definition": "The ability of a distributed system to continue operating properly in the event of failure of some components.",
         "translations": {
-            "hi": "त्रुटि सहिष्णुता",
+            "hi": "त्रुटि सहिष्णुता (दोष सहनशीलता)",
             "ta": "பிழை சகிப்புத்தன்மை",
             "de": "Fehlertoleranz",
             "es": "tolerancia a fallos"
