@@ -1,8 +1,10 @@
 import logging
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -37,6 +39,11 @@ async def lifespan(app: FastAPI):
     logger.info("Running unified idempotent seed routine...")
     seed_all()
 
+    from backend.config import ENVIRONMENT, JWT_SECRET
+    if ENVIRONMENT != "development":
+        if not JWT_SECRET or JWT_SECRET == "clrag-dev-secret-replace-in-production-2026" or len(JWT_SECRET) < 32:
+            raise RuntimeError("Fatal: Outside development, JWT_SECRET must be configured with at least 32 characters.")
+
     yield
     logger.info("CL-RAG backend shutting down.")
 
@@ -47,10 +54,12 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS
+# CORS: Restricted to configured origins
+cors_origins_raw = os.getenv("CORS_ORIGINS", "http://localhost:8000,http://127.0.0.1:8000")
+allowed_origins = [o.strip() for o in cors_origins_raw.split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -77,19 +86,20 @@ def health_check():
     }
 
 @app.get("/api/stats")
-def get_system_stats():
+def get_system_stats(current_user: dict[str, Any] = Depends(auth.get_current_user)):
+    tenant_id = current_user.get("tenant_id", "default_org")
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) as count FROM terms")
+        cursor.execute("SELECT COUNT(*) as count FROM terms WHERE tenant_id = ? OR tenant_id = 'default_org'", (tenant_id,))
         term_count = cursor.fetchone()["count"]
 
-        cursor.execute("SELECT COUNT(*) as count FROM documents")
+        cursor.execute("SELECT COUNT(*) as count FROM documents WHERE tenant_id = ?", (tenant_id,))
         doc_count = cursor.fetchone()["count"]
 
-        cursor.execute("SELECT COUNT(*) as count FROM document_chunks")
+        cursor.execute("SELECT COUNT(*) as count FROM document_chunks WHERE tenant_id = ?", (tenant_id,))
         chunk_count = cursor.fetchone()["count"]
 
-        cursor.execute("SELECT COUNT(*) as count FROM review_queue WHERE status = 'PENDING'")
+        cursor.execute("SELECT COUNT(*) as count FROM review_queue WHERE tenant_id = ? AND status = 'PENDING'", (tenant_id,))
         pending_reviews = cursor.fetchone()["count"]
 
         cursor.execute("SELECT COUNT(*) as count FROM term_audit_log WHERE action = 'HUMAN_CORRECTION'")

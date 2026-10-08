@@ -72,7 +72,8 @@ class MultiAgentTranslationService:
         source_text: str,
         target_lang: str,
         domain: str = "cloud_computing",
-        job_id: str | None = None
+        job_id: str | None = None,
+        tenant_id: str = "default_org"
     ) -> dict[str, Any]:
         if not job_id:
             job_id = str(uuid.uuid4())
@@ -138,7 +139,8 @@ class MultiAgentTranslationService:
                     critic_notes=critic_res["notes"] + (
                         f" | Uncovered terminology detected: {[u['source_term'] for u in uncovered_terms]}"
                         if uncovered_terms else ""
-                    )
+                    ),
+                    tenant_id=tenant_id
                 )
 
             segment_data = {
@@ -421,7 +423,8 @@ class MultiAgentTranslationService:
         confidence: float,
         verifier_score: float,
         critic_score: float,
-        critic_notes: str
+        critic_notes: str,
+        tenant_id: str = "default_org"
     ):
         """
         Enqueues low-confidence segment/terms into the Human-in-the-Loop Review Queue.
@@ -435,12 +438,13 @@ class MultiAgentTranslationService:
 
             cursor.execute("""
                 INSERT INTO review_queue (
-                    id, job_id, source_segment, target_segment, target_lang, domain,
+                    id, tenant_id, job_id, source_segment, target_segment, target_lang, domain,
                     term_id, term_text, confidence, verifier_score, critic_score,
                     critic_notes, status, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?)
             """, (
                 str(uuid.uuid4()),
+                tenant_id,
                 job_id,
                 source_segment,
                 target_segment,

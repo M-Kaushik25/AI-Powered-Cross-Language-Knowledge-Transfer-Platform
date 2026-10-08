@@ -32,7 +32,11 @@ class ExtractRequest(BaseModel):
     domain: str | None = "cloud_computing"
 
 @router.get("/terms")
-def list_terms(domain: str | None = None, search: str | None = None):
+def list_terms(
+    domain: str | None = None,
+    search: str | None = None,
+    current_user: dict[str, Any] = Depends(get_current_user)
+):
     terms = kg_service.get_all_terms(domain=domain, search=search)
     return {
         "count": len(terms),
@@ -41,11 +45,30 @@ def list_terms(domain: str | None = None, search: str | None = None):
     }
 
 @router.get("/terms/{term_id}")
-def get_term_detail(term_id: str):
+def get_term_detail(
+    term_id: str,
+    current_user: dict[str, Any] = Depends(get_current_user)
+):
     term = kg_service.get_term_by_id(term_id)
     if not term:
         raise HTTPException(status_code=404, detail="Term node not found")
     return term
+
+@router.get("/concepts")
+def list_concepts(current_user: dict[str, Any] = Depends(get_current_user)):
+    from backend.database import get_db
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM concepts ORDER BY canonical_name ASC")
+        return cursor.fetchall()
+
+@router.get("/relationships")
+def list_relationships(current_user: dict[str, Any] = Depends(get_current_user)):
+    from backend.database import get_db
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM term_relationships ORDER BY created_at DESC")
+        return cursor.fetchall()
 
 @router.post("/terms")
 def create_or_update_term(
@@ -111,7 +134,10 @@ def rollback_term_version(
         raise HTTPException(status_code=400, detail=str(e))
 
 @router.post("/extract")
-def extract_candidate_terms(req: ExtractRequest):
+def extract_candidate_terms(
+    req: ExtractRequest,
+    current_user: dict[str, Any] = Depends(get_current_user)
+):
     candidates = kg_service.extract_candidate_terms(req.text, domain=req.domain)
     return {
         "domain": req.domain,
@@ -120,5 +146,8 @@ def extract_candidate_terms(req: ExtractRequest):
     }
 
 @router.get("/graph")
-def export_graph_data(domain: str | None = None):
+def export_graph_data(
+    domain: str | None = None,
+    current_user: dict[str, Any] = Depends(get_current_user)
+):
     return kg_service.export_graph_json(domain=domain)

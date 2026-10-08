@@ -366,6 +366,23 @@ class EvaluationService:
             "metrics": metrics
         }
 
+    def list_eval_runs(self) -> list[dict[str, Any]]:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM eval_runs ORDER BY created_at DESC LIMIT 20")
+            rows = cursor.fetchall()
+        runs = []
+        for row in rows:
+            runs.append({
+                "eval_id": row["id"],
+                "name": row["name"],
+                "domain": row["domain"],
+                "created_at": row["created_at"],
+                "rounds": json.loads(row["rounds_json"]) if row.get("rounds_json") else [],
+                "metrics": json.loads(row["metrics_json"]) if row.get("metrics_json") else {}
+            })
+        return runs
+
 
 def re_tokenize(text: str) -> list[str]:
     import re

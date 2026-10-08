@@ -15,13 +15,25 @@ class ReviewActionRequest(BaseModel):
     reviewer_comment: str | None = "Approved and updated during expert review"
 
 @router.get("")
-def list_review_items(status: str | None = "PENDING"):
+def list_review_items(
+    status: str | None = "PENDING",
+    current_user: dict[str, Any] = Depends(require_role(["ADMIN", "REVIEWER"]))
+):
+    tenant_id = current_user.get("tenant_id", "default_org")
     with get_db() as conn:
         cursor = conn.cursor()
         if status and status != "ALL":
-            cursor.execute("SELECT * FROM review_queue WHERE status = ? ORDER BY created_at DESC", (status,))
+            cursor.execute("""
+                SELECT * FROM review_queue
+                WHERE status = ? AND (tenant_id = ? OR tenant_id = 'default_org')
+                ORDER BY created_at DESC
+            """, (status, tenant_id))
         else:
-            cursor.execute("SELECT * FROM review_queue ORDER BY created_at DESC")
+            cursor.execute("""
+                SELECT * FROM review_queue
+                WHERE tenant_id = ? OR tenant_id = 'default_org'
+                ORDER BY created_at DESC
+            """, (tenant_id,))
         items = cursor.fetchall()
 
     return {
@@ -42,9 +54,10 @@ def correct_and_update_kg(
     2. Increments version and logs provenance with authenticated reviewer identity.
     3. Resolves this queue entry.
     """
+    tenant_id = current_user.get("tenant_id", "default_org")
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM review_queue WHERE id = ?", (item_id,))
+        cursor.execute("SELECT * FROM review_queue WHERE id = ? AND (tenant_id = ? OR tenant_id = 'default_org')", (item_id, tenant_id))
         item = cursor.fetchone()
         if not item:
             raise HTTPException(status_code=404, detail="Review item not found")
@@ -84,10 +97,11 @@ def dismiss_review_item(
     item_id: str,
     current_user: dict[str, Any] = Depends(require_role(["ADMIN", "REVIEWER"]))
 ):
+    tenant_id = current_user.get("tenant_id", "default_org")
     now = datetime.utcnow().isoformat()
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT id FROM review_queue WHERE id = ?", (item_id,))
+        cursor.execute("SELECT id FROM review_queue WHERE id = ? AND (tenant_id = ? OR tenant_id = 'default_org')", (item_id, tenant_id))
         if not cursor.fetchone():
             raise HTTPException(status_code=404, detail="Review item not found")
 

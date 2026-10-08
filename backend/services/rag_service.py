@@ -2,7 +2,7 @@ import json
 import math
 import re
 import uuid
-from typing import Any
+from typing import Any, Optional
 
 import httpx
 
@@ -195,11 +195,13 @@ class CrossLanguageRAGService:
         filename: str,
         content: str,
         file_type: str = "txt",
-        domain: str = "cloud_computing"
+        domain: str = "cloud_computing",
+        tenant_id: str = "default_org",
+        user_id: Optional[str] = None
     ) -> dict[str, Any]:
         """
         Parses, chunks, extracts terminology, and stores a document in the Knowledge Space
-        with pre-computed multilingual concept representations.
+        with pre-computed multilingual concept representations and tenancy scoping.
         """
         doc_id = str(uuid.uuid4())
         now = get_utc_now_iso()
@@ -223,15 +225,17 @@ class CrossLanguageRAGService:
         if not chunks:
             chunks = [content.strip() or "Empty document content."]
 
-        # Step 2: Store in DB
+        # Step 2: Store in DB with tenancy
         with get_db() as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                INSERT INTO documents (id, space_id, filename, file_type, raw_text, status, chunk_count, created_at)
-                VALUES (?, ?, ?, ?, ?, 'READY', ?, ?)
+                INSERT INTO documents (id, tenant_id, space_id, user_id, filename, file_type, raw_text, status, chunk_count, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'READY', ?, ?)
             """, (
                 doc_id,
+                tenant_id,
                 space_id,
+                user_id,
                 filename,
                 file_type,
                 content,
@@ -249,10 +253,11 @@ class CrossLanguageRAGService:
                 vec = self.vectorizer.compute_chunk_vector(chunk_text, detected_terms)
 
                 cursor.execute("""
-                    INSERT INTO document_chunks (id, document_id, space_id, chunk_index, content, embedding_json, detected_terms_json)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO document_chunks (id, tenant_id, document_id, space_id, chunk_index, content, embedding_json, detected_terms_json)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     chunk_id,
+                    tenant_id,
                     doc_id,
                     space_id,
                     idx + 1,

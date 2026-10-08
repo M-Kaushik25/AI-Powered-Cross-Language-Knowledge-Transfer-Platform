@@ -56,15 +56,32 @@ def test_d3_chat_unknown_space_returns_404():
     """
     D3 reproduction: POST /api/chat with an unknown space_id must return 404, not 500.
     """
-    response = client.post("/api/chat", json={
-        "space_id": "non-existent-space-uuid-00000",
-        "question": "What is fault tolerance?",
-        "target_lang": "en"
-    })
+    token = client.post("/api/auth/login", json={
+        "email": "user@clrag.org",
+        "password": "UserPassword123!"
+    }).json()["access_token"]
+
+    response = client.post(
+        "/api/chat",
+        json={
+            "space_id": "non-existent-space-uuid-00000",
+            "question": "What is fault tolerance?",
+            "target_lang": "en"
+        },
+        headers={"Authorization": f"Bearer {token}"}
+    )
     assert response.status_code == 404, f"Expected 404 for unknown space_id, got {response.status_code}: {response.text}"
     assert "not found" in response.json()["detail"].lower()
 
 def test_documents_unknown_space_returns_404():
     """Verify document endpoints return 404 for unknown space_id."""
-    response = client.get("/api/documents/spaces/non-existent-space-uuid-00000")
+    token = client.post("/api/auth/login", json={
+        "email": "user@clrag.org",
+        "password": "UserPassword123!"
+    }).json()["access_token"]
+
+    response = client.get(
+        "/api/documents/spaces/non-existent-space-uuid-00000",
+        headers={"Authorization": f"Bearer {token}"}
+    )
     assert response.status_code == 404

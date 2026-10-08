@@ -122,6 +122,17 @@
         <div class="badge-tag badge-verified" id="gating-threshold-badge" title="Gating Threshold: Terms below this confidence route to Human Review">
           <i class="fa-solid fa-filter"></i> Gate: &tau; &ge; 0.85
         </div>
+
+        <!-- User Session & Role Badge -->
+        <div id="user-session-container" style="display: flex; align-items: center; gap: 8px;">
+          <div id="user-profile-badge" style="display: none; background: rgba(59, 130, 246, 0.15); border: 1px solid #3b82f6; color: #93c5fd; padding: 4px 10px; border-radius: 6px; font-size: 12px; align-items: center; gap: 6px;">
+            <i class="fa-solid fa-user-shield"></i>
+            <span id="user-display-name">Guest</span>
+            <span id="user-display-role" class="badge-tag" style="font-size: 10px; padding: 2px 6px; background: #2563eb; color: #fff;">USER</span>
+            <button id="btn-logout" class="btn btn-secondary" style="padding: 2px 6px; font-size: 11px; margin-left: 4px;" title="Sign Out"><i class="fa-solid fa-right-from-bracket"></i></button>
+          </div>
+          <button id="btn-open-login" class="btn btn-primary" style="padding: 5px 12px; font-size: 12px;"><i class="fa-solid fa-lock"></i> Sign In</button>
+        </div>
       </div>
     </header>
 
@@ -647,6 +658,61 @@
         <button class="btn btn-primary" id="btn-save-settings"><i class="fa-solid fa-check"></i> Apply Settings</button>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────
+     Modal: Authentication (Login & Register)
+     ───────────────────────────────────────────────────────────── -->
+<div class="modal-overlay" id="modal-auth">
+  <div class="modal-content" style="max-width: 440px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+      <h3 style="font-family: var(--font-display); font-size: 18px;" id="auth-modal-title"><i class="fa-solid fa-shield-halved"></i> Platform Authentication</h3>
+      <button class="btn btn-secondary" style="padding: 4px 8px;" onclick="closeModal('modal-auth')"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+      <button type="button" class="btn btn-primary" id="tab-auth-login" style="flex: 1;">Login</button>
+      <button type="button" class="btn btn-secondary" id="tab-auth-register" style="flex: 1;">Register</button>
+    </div>
+
+    <!-- Login Form -->
+    <form id="form-auth-login" style="display: flex; flex-direction: column; gap: 14px;">
+      <div>
+        <label style="font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 4px;">Email Address</label>
+        <input type="email" class="chat-input" id="auth-login-email" required placeholder="admin@clrag.org">
+      </div>
+      <div>
+        <label style="font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 4px;">Password</label>
+        <input type="password" class="chat-input" id="auth-login-password" required placeholder="••••••••••••">
+      </div>
+      <div id="auth-login-error" style="color: #ef4444; font-size: 12px; display: none;"></div>
+      <button type="submit" class="btn btn-primary" style="width: 100%;"><i class="fa-solid fa-right-to-bracket"></i> Sign In</button>
+      <div style="font-size: 11px; color: var(--text-muted); text-align: center; margin-top: 6px;">
+        Demo Seed Accounts: <code>admin@clrag.org</code> (ADMIN) &bull; <code>reviewer@clrag.org</code> (REVIEWER) &bull; <code>user@clrag.org</code> (USER)
+      </div>
+    </form>
+
+    <!-- Register Form -->
+    <form id="form-auth-register" style="display: none; flex-direction: column; gap: 14px;">
+      <div>
+        <label style="font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 4px;">Full Name</label>
+        <input type="text" class="chat-input" id="auth-reg-name" required placeholder="Dr. Vikram Sharma">
+      </div>
+      <div>
+        <label style="font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 4px;">Email Address</label>
+        <input type="email" class="chat-input" id="auth-reg-email" required placeholder="vikram@research.org">
+      </div>
+      <div>
+        <label style="font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 4px;">Password</label>
+        <input type="password" class="chat-input" id="auth-reg-password" required placeholder="••••••••••••">
+      </div>
+      <div>
+        <label style="font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 4px;">Organization / Tenant ID</label>
+        <input type="text" class="chat-input" id="auth-reg-tenant" value="default_org" required>
+      </div>
+      <div id="auth-reg-error" style="color: #ef4444; font-size: 12px; display: none;"></div>
+      <button type="submit" class="btn btn-primary" style="width: 100%;"><i class="fa-solid fa-user-plus"></i> Create Account</button>
+    </form>
   </div>
 </div>
 

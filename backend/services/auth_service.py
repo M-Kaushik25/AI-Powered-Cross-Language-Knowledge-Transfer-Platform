@@ -68,7 +68,7 @@ def get_current_user(credentials: HTTPAuthorizationCredentials | None = Depends(
 
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT id, name, email, role, preferred_lang, created_at FROM users WHERE id = ?", (user_id,))
+        cursor.execute("SELECT id, tenant_id, name, email, role, preferred_lang, created_at FROM users WHERE id = ?", (user_id,))
         user = cursor.fetchone()
         if not user:
             raise HTTPException(
@@ -76,6 +76,8 @@ def get_current_user(credentials: HTTPAuthorizationCredentials | None = Depends(
                 detail="User account associated with this token no longer exists.",
                 headers={"WWW-Authenticate": "Bearer"},
             )
+        # Ensure tenant_id from token or DB is present
+        user["tenant_id"] = payload.get("tenant_id") or user.get("tenant_id", "default_org")
         return user
 
 def get_optional_user(credentials: HTTPAuthorizationCredentials | None = Depends(security_bearer)) -> dict[str, Any] | None:
@@ -89,8 +91,11 @@ def get_optional_user(credentials: HTTPAuthorizationCredentials | None = Depends
             return None
         with get_db() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT id, name, email, role, preferred_lang, created_at FROM users WHERE id = ?", (user_id,))
-            return cursor.fetchone()
+            cursor.execute("SELECT id, tenant_id, name, email, role, preferred_lang, created_at FROM users WHERE id = ?", (user_id,))
+            user = cursor.fetchone()
+            if user:
+                user["tenant_id"] = payload.get("tenant_id") or user.get("tenant_id", "default_org")
+            return user
     except Exception:
         return None
 

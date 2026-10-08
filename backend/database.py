@@ -39,10 +39,11 @@ def init_db(db_path: str | None = None):
     with get_db(db_path) as conn:
         cursor = conn.cursor()
 
-        # 1. Users with strictly enforced roles: ADMIN, REVIEWER, USER
+        # 1. Users with strictly enforced roles: ADMIN, REVIEWER, USER & Tenancy
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (
             id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL DEFAULT 'default_org',
             name TEXT NOT NULL,
             email TEXT NOT NULL UNIQUE,
             password_hash TEXT NOT NULL,
@@ -56,6 +57,7 @@ def init_db(db_path: str | None = None):
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS knowledge_spaces (
             id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL DEFAULT 'default_org',
             user_id TEXT NOT NULL,
             name TEXT NOT NULL,
             description TEXT,
@@ -70,6 +72,7 @@ def init_db(db_path: str | None = None):
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS documents (
             id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL DEFAULT 'default_org',
             space_id TEXT NOT NULL,
             user_id TEXT,
             filename TEXT NOT NULL,
@@ -87,6 +90,7 @@ def init_db(db_path: str | None = None):
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS document_chunks (
             id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL DEFAULT 'default_org',
             document_id TEXT NOT NULL,
             space_id TEXT NOT NULL,
             chunk_index INTEGER NOT NULL,
@@ -114,6 +118,7 @@ def init_db(db_path: str | None = None):
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS terms (
             id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL DEFAULT 'default_org',
             concept_id TEXT,
             source_term TEXT NOT NULL,
             domain TEXT NOT NULL,
@@ -165,6 +170,7 @@ def init_db(db_path: str | None = None):
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS review_queue (
             id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL DEFAULT 'default_org',
             job_id TEXT NOT NULL,
             source_segment TEXT NOT NULL,
             target_segment TEXT NOT NULL,
@@ -227,7 +233,20 @@ def init_db(db_path: str | None = None):
         )
         """)
 
-        # Performance Indexes
+        # Dynamic Tenancy Migration (safely adds tenant_id if existing table lacks it)
+        tables_to_migrate = ["users", "knowledge_spaces", "documents", "document_chunks", "terms", "review_queue"]
+        for table in tables_to_migrate:
+            cursor.execute(f"PRAGMA table_info({table})")
+            columns = [col["name"] for col in cursor.fetchall()]
+            if columns and "tenant_id" not in columns:
+                cursor.execute(f"ALTER TABLE {table} ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default_org'")
+
+        # Performance & Tenancy Indexes
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_tenant ON users(tenant_id);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_spaces_tenant ON knowledge_spaces(tenant_id);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_docs_tenant ON documents(tenant_id);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_terms_tenant ON terms(tenant_id);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_review_tenant ON review_queue(tenant_id);")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_terms_source_domain ON terms(source_term, domain);")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_review_queue_status ON review_queue(status);")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_chunks_space ON document_chunks(space_id);")
@@ -259,8 +278,8 @@ def seed_all(db_path: str | None = None):
             if not admin_row:
                 admin_id = str(uuid.uuid4())
                 cursor.execute("""
-                    INSERT INTO users (id, name, email, password_hash, role, preferred_lang, created_at)
-                    VALUES (?, 'Chief Systems Architect', 'admin@clrag.org', ?, 'ADMIN', 'en', ?)
+                    INSERT INTO users (id, tenant_id, name, email, password_hash, role, preferred_lang, created_at)
+                    VALUES (?, 'default_org', 'Chief Systems Architect', 'admin@clrag.org', ?, 'ADMIN', 'en', ?)
                 """, (admin_id, hash_password("AdminPassword123!"), now))
             else:
                 admin_id = admin_row["id"]
@@ -268,15 +287,15 @@ def seed_all(db_path: str | None = None):
             cursor.execute("SELECT id FROM users WHERE email = 'reviewer@clrag.org'")
             if not cursor.fetchone():
                 cursor.execute("""
-                    INSERT INTO users (id, name, email, password_hash, role, preferred_lang, created_at)
-                    VALUES (?, 'Domain Terminology Reviewer', 'reviewer@clrag.org', ?, 'REVIEWER', 'en', ?)
+                    INSERT INTO users (id, tenant_id, name, email, password_hash, role, preferred_lang, created_at)
+                    VALUES (?, 'default_org', 'Domain Terminology Reviewer', 'reviewer@clrag.org', ?, 'REVIEWER', 'en', ?)
                 """, (str(uuid.uuid4()), hash_password("ReviewerPassword123!"), now))
 
             cursor.execute("SELECT id FROM users WHERE email = 'user@clrag.org'")
             if not cursor.fetchone():
                 cursor.execute("""
-                    INSERT INTO users (id, name, email, password_hash, role, preferred_lang, created_at)
-                    VALUES (?, 'Research Student', 'user@clrag.org', ?, 'USER', 'en', ?)
+                    INSERT INTO users (id, tenant_id, name, email, password_hash, role, preferred_lang, created_at)
+                    VALUES (?, 'default_org', 'Research Student', 'user@clrag.org', ?, 'USER', 'en', ?)
                 """, (str(uuid.uuid4()), hash_password("UserPassword123!"), now))
         else:
             cursor.execute("SELECT id FROM users WHERE role = 'ADMIN' LIMIT 1")
@@ -296,8 +315,8 @@ def seed_all(db_path: str | None = None):
         if not space_row:
             space_id = str(uuid.uuid4())
             cursor.execute("""
-                INSERT INTO knowledge_spaces (id, user_id, name, description, domain, default_lang, created_at)
-                VALUES (?, ?, 'Cloud & Distributed Systems Architecture', 'Authoritative technical specifications covering fault tolerance, load balancers, and eventual consistency.', 'cloud_computing', 'en', ?)
+                INSERT INTO knowledge_spaces (id, tenant_id, user_id, name, description, domain, default_lang, created_at)
+                VALUES (?, 'default_org', ?, 'Cloud & Distributed Systems Architecture', 'Authoritative technical specifications covering fault tolerance, load balancers, and eventual consistency.', 'cloud_computing', 'en', ?)
             """, (space_id, admin_id, now))
         else:
             space_id = space_row["id"]
@@ -332,8 +351,8 @@ def seed_all(db_path: str | None = None):
                 start += (chunk_size - overlap)
 
             cursor.execute("""
-                INSERT INTO documents (id, space_id, user_id, filename, file_type, raw_text, status, chunk_count, created_at)
-                VALUES (?, ?, ?, ?, 'txt', ?, 'READY', ?, ?)
+                INSERT INTO documents (id, tenant_id, space_id, user_id, filename, file_type, raw_text, status, chunk_count, created_at)
+                VALUES (?, 'default_org', ?, ?, ?, 'txt', ?, 'READY', ?, ?)
             """, (doc_id, space_id, admin_id, sample_filename, sample_text, len(chunks), now))
 
             # Sample domain terms known in cloud_computing
@@ -341,8 +360,8 @@ def seed_all(db_path: str | None = None):
             for idx, chunk_text in enumerate(chunks):
                 chunk_id = str(uuid.uuid4())
                 cursor.execute("""
-                    INSERT INTO document_chunks (id, document_id, space_id, chunk_index, content, embedding_json, detected_terms_json)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO document_chunks (id, tenant_id, document_id, space_id, chunk_index, content, embedding_json, detected_terms_json)
+                    VALUES (?, 'default_org', ?, ?, ?, ?, ?, ?)
                 """, (
                     chunk_id,
                     doc_id,

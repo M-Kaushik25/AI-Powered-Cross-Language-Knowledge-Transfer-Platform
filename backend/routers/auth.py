@@ -19,6 +19,7 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     password: str
     role: str | None = "USER"
+    tenant_id: str | None = "default_org"
     preferred_lang: str | None = "en"
 
 class LoginRequest(BaseModel):
@@ -29,6 +30,7 @@ class LoginRequest(BaseModel):
 def register(req: RegisterRequest):
     now = get_utc_now_iso()
     assigned_role = req.role if req.role in ["USER", "REVIEWER", "ADMIN"] else "USER"
+    assigned_tenant = req.tenant_id.strip() if req.tenant_id and req.tenant_id.strip() else "default_org"
 
     with get_db() as conn:
         cursor = conn.cursor()
@@ -43,10 +45,11 @@ def register(req: RegisterRequest):
         hashed_pwd = hash_password(req.password)
 
         cursor.execute("""
-            INSERT INTO users (id, name, email, password_hash, role, preferred_lang, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO users (id, tenant_id, name, email, password_hash, role, preferred_lang, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             user_id,
+            assigned_tenant,
             req.name.strip(),
             req.email.lower().strip(),
             hashed_pwd,
@@ -58,16 +61,22 @@ def register(req: RegisterRequest):
         # Create initial default workspace
         space_id = str(uuid.uuid4())
         cursor.execute("""
-            INSERT INTO knowledge_spaces (id, user_id, name, description, domain, default_lang, created_at)
-            VALUES (?, ?, 'Personal Knowledge Space', 'User workspace for cross-language document exploration', 'cloud_computing', ?, ?)
-        """, (space_id, user_id, req.preferred_lang, now))
+            INSERT INTO knowledge_spaces (id, tenant_id, user_id, name, description, domain, default_lang, created_at)
+            VALUES (?, ?, ?, 'Personal Knowledge Space', 'User workspace for cross-language document exploration', 'cloud_computing', ?, ?)
+        """, (space_id, assigned_tenant, user_id, req.preferred_lang, now))
 
-    token = create_access_token({"sub": user_id, "email": req.email, "role": assigned_role})
+    token = create_access_token({
+        "sub": user_id,
+        "email": req.email,
+        "role": assigned_role,
+        "tenant_id": assigned_tenant
+    })
     return {
         "access_token": token,
         "token_type": "bearer",
         "user": {
             "id": user_id,
+            "tenant_id": assigned_tenant,
             "name": req.name,
             "email": req.email,
             "role": assigned_role,
@@ -90,10 +99,12 @@ def login(req: LoginRequest):
                 headers={"WWW-Authenticate": "Bearer"}
             )
 
+    tenant_id = user.get("tenant_id") or "default_org"
     token = create_access_token({
         "sub": user["id"],
         "email": user["email"],
-        "role": user["role"]
+        "role": user["role"],
+        "tenant_id": tenant_id
     })
 
     return {
@@ -101,6 +112,7 @@ def login(req: LoginRequest):
         "token_type": "bearer",
         "user": {
             "id": user["id"],
+            "tenant_id": tenant_id,
             "name": user["name"],
             "email": user["email"],
             "role": user["role"],

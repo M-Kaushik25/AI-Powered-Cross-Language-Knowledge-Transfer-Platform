@@ -19,27 +19,65 @@ async function authFetch(url, options = {}) {
   if (authToken) {
     options.headers['Authorization'] = `Bearer ${authToken}`;
   }
-  return fetch(url, options);
+  const res = await fetch(url, options);
+  if (res.status === 401) {
+    // Token expired or unauthenticated
+    authToken = null;
+    currentUser = null;
+    localStorage.removeItem('clrag_token');
+    localStorage.removeItem('clrag_user');
+    updateUserSessionUI();
+    openModal('modal-auth');
+    showToast("Session expired or authentication required. Please sign in.");
+  }
+  return res;
+}
+
+function updateUserSessionUI() {
+  const profileBadge = document.getElementById('user-profile-badge');
+  const btnLogin = document.getElementById('btn-open-login');
+  const nameEl = document.getElementById('user-display-name');
+  const roleEl = document.getElementById('user-display-role');
+
+  if (currentUser && authToken) {
+    if (profileBadge) profileBadge.style.display = 'flex';
+    if (btnLogin) btnLogin.style.display = 'none';
+    if (nameEl) nameEl.textContent = currentUser.name || currentUser.email;
+    if (roleEl) {
+      roleEl.textContent = currentUser.role || 'USER';
+      const roleColors = {
+        ADMIN: '#dc2626',
+        REVIEWER: '#2563eb',
+        USER: '#16a34a'
+      };
+      roleEl.style.background = roleColors[currentUser.role] || '#2563eb';
+    }
+
+    // Role-aware UI gating
+    const isReviewerOrAdmin = ['ADMIN', 'REVIEWER'].includes(currentUser.role);
+    const isAdmin = currentUser.role === 'ADMIN';
+
+    // Disable ablation run button for non-admins
+    const btnAblation = document.getElementById('btn-run-ablation-benchmark');
+    if (btnAblation) {
+      btnAblation.title = isAdmin ? "Run full IEEE evaluation" : "Evaluation run requires ADMIN role";
+      if (!isAdmin) {
+        btnAblation.classList.add('disabled');
+      } else {
+        btnAblation.classList.remove('disabled');
+      }
+    }
+  } else {
+    if (profileBadge) profileBadge.style.display = 'none';
+    if (btnLogin) btnLogin.style.display = 'inline-block';
+  }
 }
 
 async function ensureAuthenticated() {
-  if (!authToken) {
-    try {
-      const res = await fetch(`${API_BASE}/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: 'reviewer@clrag.org', password: 'ReviewerPassword123!' })
-      });
-      if (res.ok) {
-        const data = await res.json();
-        authToken = data.access_token;
-        currentUser = data.user;
-        localStorage.setItem('clrag_token', authToken);
-        localStorage.setItem('clrag_user', JSON.stringify(currentUser));
-      }
-    } catch (e) {
-      console.warn("Auto-auth session init:", e);
-    }
+  // Respect existing session or open sign-in modal if anonymous
+  updateUserSessionUI();
+  if (!authToken || !currentUser) {
+    openModal('modal-auth');
   }
 }
 
@@ -56,7 +94,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   initNavigation();
   initModals();
   await ensureAuthenticated();
-  loadInitialData();
+  if (authToken) {
+    loadInitialData();
+  }
   setupEventListeners();
 });
 
@@ -125,7 +165,8 @@ async function loadInitialData() {
 
 async function loadStats() {
   try {
-    const res = await fetch(`${API_BASE}/stats`);
+    const res = await authFetch(`${API_BASE}/stats`);
+    if (!res.ok) return;
     const data = await res.json();
     document.getElementById('stat-kg-nodes').innerText = data.terminology_nodes;
     document.getElementById('stat-docs-indexed').innerText = data.documents_indexed;
@@ -140,7 +181,8 @@ async function loadStats() {
 
 async function loadSpaces() {
   try {
-    const res = await fetch(`${API_BASE}/documents/spaces`);
+    const res = await authFetch(`${API_BASE}/documents/spaces`);
+    if (!res.ok) return;
     activeSpaces = await res.json();
     if (activeSpaces.length > 0) {
       currentSpaceId = activeSpaces[0].id;
@@ -162,7 +204,8 @@ function populateSpaceSelects() {
 
 async function loadReviewQueueBadge() {
   try {
-    const res = await fetch(`${API_BASE}/review?status=PENDING`);
+    const res = await authFetch(`${API_BASE}/review?status=PENDING`);
+    if (!res.ok) return;
     const data = await res.json();
     document.getElementById('review-badge-count').innerText = data.count;
     document.getElementById('stat-pending-reviews').innerText = data.count;
@@ -189,7 +232,7 @@ async function runMultiAgentTranslation() {
   btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Executing Agents...`;
 
   try {
-    const res = await fetch(`${API_BASE}/translate`, {
+    const res = await authFetch(`${API_BASE}/translate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -264,7 +307,8 @@ async function loadKnowledgeGraph() {
   if (search) url += `&search=${encodeURIComponent(search)}`;
 
   try {
-    const res = await fetch(url);
+    const res = await authFetch(url);
+    if (!res.ok) return;
     const data = await res.json();
     renderKGTable(data.terms);
   } catch (err) {
@@ -347,7 +391,8 @@ function openEditTermModal(id, source, domain) {
 // ─────────────────────────────────────────────────────────────
 async function loadReviewQueue() {
   try {
-    const res = await fetch(`${API_BASE}/review?status=PENDING`);
+    const res = await authFetch(`${API_BASE}/review?status=PENDING`);
+    if (!res.ok) return;
     const data = await res.json();
     renderReviewQueue(data.items);
   } catch (err) {
@@ -480,7 +525,7 @@ async function runAdaptiveSummarization() {
   btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Adapting...`;
 
   try {
-    const res = await fetch(`${API_BASE}/adaptive`, {
+    const res = await authFetch(`${API_BASE}/adaptive`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -526,7 +571,7 @@ async function sendChatMessage() {
   const loadingBubble = appendChatBubble('assistant', 'Searching knowledge spaces across language boundaries...');
 
   try {
-    const res = await fetch(`${API_BASE}/chat`, {
+    const res = await authFetch(`${API_BASE}/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -591,7 +636,8 @@ function appendChatResponseWithCitations(answer, citations) {
 // ─────────────────────────────────────────────────────────────
 async function loadDocuments() {
   try {
-    const res = await fetch(`${API_BASE}/documents`);
+    const res = await authFetch(`${API_BASE}/documents`);
+    if (!res.ok) return;
     const docs = await res.json();
     renderDocumentCards(docs);
   } catch (err) {
@@ -629,7 +675,8 @@ function renderDocumentCards(docs) {
 
 async function viewDocumentChunks(docId, filename) {
   try {
-    const res = await fetch(`${API_BASE}/documents/${docId}/chunks`);
+    const res = await authFetch(`${API_BASE}/documents/${docId}/chunks`);
+    if (!res.ok) return;
     const chunks = await res.json();
     let preview = `Document: ${filename}\n\n`;
     chunks.forEach(c => {
@@ -649,7 +696,7 @@ async function handleUploadDocSubmit(e) {
   const domain = document.getElementById('global-domain-select').value;
 
   try {
-    const res = await fetch(`${API_BASE}/documents/ingest-text`, {
+    const res = await authFetch(`${API_BASE}/documents/ingest-text`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -676,7 +723,8 @@ async function handleUploadDocSubmit(e) {
 // ─────────────────────────────────────────────────────────────
 async function loadEvaluationAblation() {
   try {
-    const res = await fetch(`${API_BASE}/eval/latest`);
+    const res = await authFetch(`${API_BASE}/eval/latest`);
+    if (!res.ok) return;
     const data = await res.json();
     renderEvaluationCharts(data.metrics || data);
   } catch (err) {
@@ -691,7 +739,7 @@ async function triggerAblationRun() {
 
   try {
     const domain = document.getElementById('global-domain-select').value;
-    const res = await fetch(`${API_BASE}/eval/run`, {
+    const res = await authFetch(`${API_BASE}/eval/run`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ domain: domain })
@@ -855,6 +903,113 @@ function setupEventListeners() {
 
   // Ablation Run
   document.getElementById('btn-run-ablation-benchmark')?.addEventListener('click', triggerAblationRun);
+
+  // Authentication UI Controls
+  document.getElementById('btn-open-login')?.addEventListener('click', () => openModal('modal-auth'));
+  document.getElementById('btn-logout')?.addEventListener('click', handleLogout);
+
+  document.getElementById('tab-auth-login')?.addEventListener('click', () => {
+    document.getElementById('tab-auth-login').className = 'btn btn-primary';
+    document.getElementById('tab-auth-register').className = 'btn btn-secondary';
+    document.getElementById('form-auth-login').style.display = 'flex';
+    document.getElementById('form-auth-register').style.display = 'none';
+  });
+
+  document.getElementById('tab-auth-register')?.addEventListener('click', () => {
+    document.getElementById('tab-auth-register').className = 'btn btn-primary';
+    document.getElementById('tab-auth-login').className = 'btn btn-secondary';
+    document.getElementById('form-auth-login').style.display = 'none';
+    document.getElementById('form-auth-register').style.display = 'flex';
+  });
+
+  document.getElementById('form-auth-login')?.addEventListener('submit', handleLoginSubmit);
+  document.getElementById('form-auth-register')?.addEventListener('submit', handleRegisterSubmit);
+}
+
+async function handleLoginSubmit(e) {
+  e.preventDefault();
+  const email = document.getElementById('auth-login-email').value.trim();
+  const password = document.getElementById('auth-login-password').value;
+  const errEl = document.getElementById('auth-login-error');
+  if (errEl) errEl.style.display = 'none';
+
+  try {
+    const res = await fetch(`${API_BASE}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      if (errEl) {
+        errEl.textContent = data.detail || 'Login failed';
+        errEl.style.display = 'block';
+      }
+      return;
+    }
+    authToken = data.access_token;
+    currentUser = data.user;
+    localStorage.setItem('clrag_token', authToken);
+    localStorage.setItem('clrag_user', JSON.stringify(currentUser));
+    updateUserSessionUI();
+    closeModal('modal-auth');
+    showToast(`Signed in as ${currentUser.name} (${currentUser.role})`);
+    loadInitialData();
+  } catch (err) {
+    if (errEl) {
+      errEl.textContent = 'Network error during sign-in.';
+      errEl.style.display = 'block';
+    }
+  }
+}
+
+async function handleRegisterSubmit(e) {
+  e.preventDefault();
+  const name = document.getElementById('auth-reg-name').value.trim();
+  const email = document.getElementById('auth-reg-email').value.trim();
+  const password = document.getElementById('auth-reg-password').value;
+  const tenant_id = document.getElementById('auth-reg-tenant').value.trim() || 'default_org';
+  const errEl = document.getElementById('auth-reg-error');
+  if (errEl) errEl.style.display = 'none';
+
+  try {
+    const res = await fetch(`${API_BASE}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email, password, tenant_id, role: 'USER' })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      if (errEl) {
+        errEl.textContent = data.detail || 'Registration failed';
+        errEl.style.display = 'block';
+      }
+      return;
+    }
+    authToken = data.access_token;
+    currentUser = data.user;
+    localStorage.setItem('clrag_token', authToken);
+    localStorage.setItem('clrag_user', JSON.stringify(currentUser));
+    updateUserSessionUI();
+    closeModal('modal-auth');
+    showToast('Account created and signed in!');
+    loadInitialData();
+  } catch (err) {
+    if (errEl) {
+      errEl.textContent = 'Network error during registration.';
+      errEl.style.display = 'block';
+    }
+  }
+}
+
+function handleLogout() {
+  authToken = null;
+  currentUser = null;
+  localStorage.removeItem('clrag_token');
+  localStorage.removeItem('clrag_user');
+  updateUserSessionUI();
+  showToast('Logged out successfully.');
+  openModal('modal-auth');
 }
 
 function initModals() {
