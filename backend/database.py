@@ -126,12 +126,12 @@ def init_db(db_path: str | None = None):
             translations_json TEXT NOT NULL DEFAULT '{}',
             version INTEGER NOT NULL DEFAULT 1,
             confidence REAL NOT NULL DEFAULT 0.85,
-            status TEXT NOT NULL DEFAULT 'APPROVED' CHECK(status IN ('APPROVED', 'CANDIDATE', 'REJECTED')),
+            status TEXT NOT NULL DEFAULT 'APPROVED' CHECK(status IN ('APPROVED', 'PROPOSED', 'CANDIDATE', 'REJECTED')),
             created_by TEXT,
             approved_by TEXT,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
-            UNIQUE(source_term, domain),
+            UNIQUE(tenant_id, source_term, domain),
             FOREIGN KEY (concept_id) REFERENCES concepts (id) ON DELETE SET NULL
         )
         """)
@@ -140,9 +140,10 @@ def init_db(db_path: str | None = None):
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS term_relationships (
             id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL DEFAULT 'default_org',
             source_term_id TEXT NOT NULL,
             target_term_id TEXT NOT NULL,
-            relation_type TEXT NOT NULL CHECK(relation_type IN ('SYNONYM', 'TRANSLATES_TO', 'CONTEXT_OF', 'SUBCLASS_OF')),
+            relation_type TEXT NOT NULL,
             confidence REAL NOT NULL DEFAULT 1.0,
             created_at TEXT NOT NULL,
             FOREIGN KEY (source_term_id) REFERENCES terms (id) ON DELETE CASCADE,
@@ -154,14 +155,32 @@ def init_db(db_path: str | None = None):
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS term_audit_log (
             id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL DEFAULT 'default_org',
             term_id TEXT NOT NULL,
             version INTEGER NOT NULL,
             action TEXT NOT NULL,
             changed_by TEXT NOT NULL,
+            reviewer_role TEXT NOT NULL DEFAULT 'REVIEWER',
             old_value_json TEXT,
             new_value_json TEXT,
             reviewer_notes TEXT,
             timestamp TEXT NOT NULL,
+            FOREIGN KEY (term_id) REFERENCES terms (id) ON DELETE CASCADE
+        )
+        """)
+
+        # 8b. Term Approvals Multi-Reviewer Consensus Gate (N=2 distinct reviewers)
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS term_approvals (
+            id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL DEFAULT 'default_org',
+            term_id TEXT NOT NULL,
+            reviewer_id TEXT NOT NULL,
+            reviewer_role TEXT NOT NULL DEFAULT 'REVIEWER',
+            decision TEXT NOT NULL CHECK(decision IN ('APPROVED', 'REJECTED')),
+            notes TEXT,
+            created_at TEXT NOT NULL,
+            UNIQUE(term_id, reviewer_id),
             FOREIGN KEY (term_id) REFERENCES terms (id) ON DELETE CASCADE
         )
         """)
@@ -189,6 +208,51 @@ def init_db(db_path: str | None = None):
             resolved_at TEXT,
             FOREIGN KEY (term_id) REFERENCES terms (id) ON DELETE SET NULL,
             FOREIGN KEY (reviewed_by) REFERENCES users (id) ON DELETE SET NULL
+        )
+        """)
+
+        # 9b. Child Table: Review Queue Multiple Terms Association
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS review_queue_terms (
+            id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL DEFAULT 'default_org',
+            review_item_id TEXT NOT NULL,
+            term_id TEXT,
+            term_text TEXT NOT NULL,
+            term_status TEXT NOT NULL DEFAULT 'UNKNOWN_TERM',
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (review_item_id) REFERENCES review_queue (id) ON DELETE CASCADE,
+            FOREIGN KEY (term_id) REFERENCES terms (id) ON DELETE SET NULL
+        )
+        """)
+
+        # 9c. Translation Jobs & Segments (Enables historical re-translation upon term updates)
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS translation_jobs (
+            id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL DEFAULT 'default_org',
+            user_id TEXT,
+            domain TEXT NOT NULL,
+            target_lang TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'COMPLETED',
+            created_at TEXT NOT NULL
+        )
+        """)
+
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS translation_segments (
+            id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL DEFAULT 'default_org',
+            job_id TEXT NOT NULL,
+            segment_index INTEGER NOT NULL,
+            source_segment TEXT NOT NULL,
+            target_segment TEXT NOT NULL,
+            engine TEXT NOT NULL,
+            confidence REAL NOT NULL,
+            needs_refresh INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (job_id) REFERENCES translation_jobs (id) ON DELETE CASCADE
         )
         """)
 
@@ -234,7 +298,10 @@ def init_db(db_path: str | None = None):
         """)
 
         # Dynamic Tenancy Migration (safely adds tenant_id if existing table lacks it)
-        tables_to_migrate = ["users", "knowledge_spaces", "documents", "document_chunks", "terms", "review_queue"]
+        tables_to_migrate = [
+            "users", "knowledge_spaces", "documents", "document_chunks",
+            "terms", "term_relationships", "term_audit_log", "review_queue"
+        ]
         for table in tables_to_migrate:
             cursor.execute(f"PRAGMA table_info({table})")
             columns = [col["name"] for col in cursor.fetchall()]
@@ -252,6 +319,9 @@ def init_db(db_path: str | None = None):
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_chunks_space ON document_chunks(space_id);")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_term ON term_audit_log(term_id);")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_relationships_source ON term_relationships(source_term_id);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_term_approvals_term ON term_approvals(term_id);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_rq_terms_item ON review_queue_terms(review_item_id);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_trans_seg_job ON translation_segments(job_id);")
 
 def seed_all(db_path: str | None = None):
     """

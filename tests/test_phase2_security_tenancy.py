@@ -1,5 +1,5 @@
-import pytest
 from fastapi.testclient import TestClient
+
 from backend.main import app
 
 client = TestClient(app)
@@ -73,9 +73,10 @@ def test_cross_tenant_isolation(tmp_path):
     """
     Verify multi-tenancy: users in Tenant A cannot see or access spaces/documents/terms/reviews in Tenant B.
     """
-    from backend.services.auth_service import hash_password, create_access_token
-    from backend.database import get_db, get_utc_now_iso
     import uuid
+
+    from backend.database import get_db, get_utc_now_iso
+    from backend.services.auth_service import create_access_token, hash_password
 
     now = get_utc_now_iso()
     user_a_id = str(uuid.uuid4())

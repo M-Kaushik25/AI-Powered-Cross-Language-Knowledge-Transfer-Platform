@@ -106,6 +106,7 @@ class EvaluationService:
 
             # Round 1: Cold Start (Temporarily strip target language in the temporary clone only)
             self._apply_cold_start_in_current_db(domain, target_lang, term_list)
+            kg_service.invalidate_cache()
             round1 = self._evaluate_round(benchmark_items, target_lang, round_name="Round 1 (Cold Start -- Zero Prior Coverage)")
 
             # Apply Human Corrections to resolve pending review items in the temporary DB
@@ -170,6 +171,7 @@ class EvaluationService:
         finally:
             # Revert environment strictly to production database
             os.environ["DATABASE_PATH"] = original_db
+            kg_service.invalidate_cache()
             if os.path.exists(temp_eval_db):
                 try:
                     os.remove(temp_eval_db)

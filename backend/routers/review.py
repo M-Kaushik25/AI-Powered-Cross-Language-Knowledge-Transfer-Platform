@@ -63,16 +63,22 @@ def correct_and_update_kg(
             raise HTTPException(status_code=404, detail="Review item not found")
 
     # Apply correction to Knowledge Graph with authenticated reviewer metadata
-    kg_res = kg_service.apply_human_correction(
-        source_term=item["term_text"],
-        target_lang=item["target_lang"],
-        corrected_translation=req.corrected_translation,
-        domain=item["domain"],
-        reviewer_notes=req.reviewer_comment or "Self-updating correction from Human Review Hub",
-        term_id=item["term_id"],
-        reviewer_id=current_user["id"],
-        reviewer_role=current_user["role"]
-    )
+    try:
+        kg_res = kg_service.apply_human_correction(
+            source_term=item["term_text"],
+            target_lang=item["target_lang"],
+            corrected_translation=req.corrected_translation,
+            domain=item["domain"],
+            reviewer_notes=req.reviewer_comment or "Self-updating correction from Human Review Hub",
+            term_id=item["term_id"],
+            reviewer_id=current_user["id"],
+            reviewer_role=current_user["role"]
+        )
+    except ValueError as e:
+        err_msg = str(e)
+        if "Validation failed" in err_msg:
+            raise HTTPException(status_code=422, detail=err_msg)
+        raise HTTPException(status_code=400, detail=err_msg)
 
     now = datetime.utcnow().isoformat()
     with get_db() as conn:
