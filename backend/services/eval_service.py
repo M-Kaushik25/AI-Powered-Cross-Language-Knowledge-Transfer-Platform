@@ -245,6 +245,8 @@ class EvaluationService:
             "status": status_flag,
             "conditions": condition_results,
             "evolution_rounds": rounds_data,
+            "rounds": rounds_data,
+            "metrics": summary_metadata,
             "run_dir": str(run_folder)
         }
 
@@ -507,9 +509,11 @@ class EvaluationService:
         return {
             "tsr": tsr,
             "tsr_percentage": tsr,
+            "term_usage_rate_percent": tsr,
             "bleu": bleu_score,
             "chrf": chrf_score,
             "review_volume_percentage": review_vol,
+            "review_rate_percent": review_vol,
             "avg_confidence": round(float(np.mean(confidences)), 4) if confidences else 0.0,
             "auroc": auroc,
             "ece": ece,

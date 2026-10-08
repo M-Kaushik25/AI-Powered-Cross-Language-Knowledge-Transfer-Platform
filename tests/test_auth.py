@@ -117,3 +117,47 @@ def test_rbac_endpoint_access_control():
     # ADMIN attempting rollback should succeed
     res_rb_admin = client.post(f"/api/kg/terms/{term_id}/rollback", json=rollback_payload, headers={"Authorization": f"Bearer {admin_token}"})
     assert res_rb_admin.status_code == 200
+
+
+def test_auth_service_edge_cases():
+    import pytest
+    from fastapi import HTTPException
+
+    from backend.services.auth_service import (
+        HTTPAuthorizationCredentials,
+        get_current_user,
+        get_optional_user,
+    )
+
+    # 1. Invalid token decode
+    with pytest.raises(HTTPException) as exc:
+        decode_access_token("not.a.valid.jwt.token")
+    assert exc.value.status_code == 401
+
+    # 2. Token without sub
+    token_no_sub = create_access_token({"role": "ADMIN"})
+    creds_no_sub = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token_no_sub)
+    with pytest.raises(HTTPException) as exc:
+        get_current_user(creds_no_sub)
+    assert exc.value.status_code == 401
+
+    # 3. Token for non-existent user id
+    token_ghost = create_access_token({"sub": "non_existent_uuid_999"})
+    creds_ghost = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token_ghost)
+    with pytest.raises(HTTPException) as exc:
+        get_current_user(creds_ghost)
+    assert exc.value.status_code == 401
+
+    # 4. get_optional_user with None
+    assert get_optional_user(None) is None
+
+    # 5. get_optional_user with invalid token
+    creds_bad = HTTPAuthorizationCredentials(scheme="Bearer", credentials="invalid_token")
+    assert get_optional_user(creds_bad) is None
+
+    # 6. get_optional_user with valid token
+    admin_login = client.post("/api/auth/login", json={"email": "admin@clrag.org", "password": "AdminPassword123!"}).json()
+    creds_valid = HTTPAuthorizationCredentials(scheme="Bearer", credentials=admin_login["access_token"])
+    user = get_optional_user(creds_valid)
+    assert user is not None
+    assert user["email"] == "admin@clrag.org"

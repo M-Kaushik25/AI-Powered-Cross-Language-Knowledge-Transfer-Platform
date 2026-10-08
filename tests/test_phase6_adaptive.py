@@ -128,3 +128,38 @@ def test_api_adaptive_endpoint():
     assert "expert_adaptation" in data
     assert "mode" in data
     assert "p99" not in data["expert_adaptation"]["text"].lower()
+
+
+@pytest.mark.asyncio
+async def test_adaptive_service_live_mode_mocked():
+    """Verify live LLM generation branch and packaging in adaptive_service."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.post("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "candidates": [{
+                        "content": {
+                            "parts": [{"text": "Adapted content without hallucinated metrics."}]
+                        }
+                    }]
+                }
+            )
+        )
+
+        old_key = adaptive_service.gemini_api_key
+        adaptive_service.gemini_api_key = "fake_key_for_test"
+        try:
+            res = await adaptive_service.generate_adaptive_summaries(
+                source_text="Fault tolerance maintains high system availability.",
+                target_lang="en",
+                domain="cloud_computing",
+                mode="live"
+            )
+            assert res["mode"] == "live_llm"
+            assert "novice_adaptation" in res
+        finally:
+            adaptive_service.gemini_api_key = old_key
