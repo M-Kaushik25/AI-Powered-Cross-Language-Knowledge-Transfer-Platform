@@ -8,7 +8,14 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from backend.config import CONFIDENCE_THRESHOLD, DEFAULT_DOMAINS, SUPPORTED_LANGUAGES
+from backend.config import (
+    CONFIDENCE_THRESHOLD,
+    DEFAULT_DOMAINS,
+    GEMINI_API_KEY,
+    GEMINI_MODEL,
+    LLM_MODE,
+    SUPPORTED_LANGUAGES,
+)
 from backend.database import get_db, init_db, seed_all
 from backend.routers import (
     adaptive,
@@ -77,9 +84,14 @@ app.include_router(eval_router.router)
 
 @app.get("/api/health")
 def health_check():
+    api_key = os.getenv("GEMINI_API_KEY", GEMINI_API_KEY)
+    mode_cfg = os.getenv("LLM_MODE", LLM_MODE)
+    is_live = bool(api_key and mode_cfg != "offline")
     return {
         "status": "HEALTHY",
         "service": "CL-RAG Cross-Language Knowledge Transfer Platform",
+        "mode": "live" if is_live else "offline_demo",
+        "engine": f"live:{os.getenv('GEMINI_MODEL', GEMINI_MODEL)}" if is_live else "offline_deterministic",
         "confidence_threshold": CONFIDENCE_THRESHOLD,
         "supported_languages": SUPPORTED_LANGUAGES,
         "domains": DEFAULT_DOMAINS

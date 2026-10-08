@@ -34,7 +34,38 @@ def list_review_items(
                 WHERE tenant_id = ? OR tenant_id = 'default_org'
                 ORDER BY created_at DESC
             """, (tenant_id,))
-        items = cursor.fetchall()
+        raw_items = cursor.fetchall()
+        items = []
+        for r in raw_items:
+            item_dict = dict(r)
+            # Fetch associated terms
+            cursor.execute("""
+                SELECT term_id, term_text, term_status
+                FROM review_queue_terms
+                WHERE review_item_id = ?
+            """, (item_dict["id"],))
+            terms = [dict(t) for t in cursor.fetchall()]
+            if not terms and item_dict.get("term_text"):
+                terms = [{
+                    "term_id": item_dict.get("term_id"),
+                    "term_text": item_dict.get("term_text"),
+                    "term_status": "FLAGGED_TERM"
+                }]
+            item_dict["terms"] = terms
+
+            # Fetch prior approvals if associated with a term_id
+            approvals = []
+            if item_dict.get("term_id"):
+                cursor.execute("""
+                    SELECT reviewer_id, reviewer_role, decision, created_at
+                    FROM term_approvals
+                    WHERE term_id = ?
+                """, (item_dict["term_id"],))
+                approvals = [dict(a) for a in cursor.fetchall()]
+            item_dict["approvals"] = approvals
+            item_dict["approvals_count"] = len(approvals)
+            item_dict["required_approvals"] = 2
+            items.append(item_dict)
 
     return {
         "count": len(items),

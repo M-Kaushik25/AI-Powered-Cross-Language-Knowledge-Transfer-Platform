@@ -749,3 +749,65 @@ body::after {
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.25);
 }
+
+/* Persistent System Mode Banner */
+.system-mode-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 24px;
+  background: rgba(15, 23, 42, 0.85);
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 12px;
+  backdrop-filter: blur(8px);
+  transition: all 0.3s ease;
+}
+
+.system-mode-banner.mode-live {
+  background: rgba(16, 185, 129, 0.12);
+  border-bottom: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.system-mode-banner.mode-offline {
+  background: rgba(245, 158, 11, 0.12);
+  border-bottom: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.mode-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 6px;
+}
+
+.mode-live .mode-dot {
+  background: #10b981;
+  box-shadow: 0 0 8px #10b981;
+}
+
+.mode-offline .mode-dot {
+  background: #f59e0b;
+  box-shadow: 0 0 8px #f59e0b;
+}
+
+.banner-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.banner-title {
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+.banner-desc {
+  color: var(--text-secondary);
+}
+
+.banner-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}

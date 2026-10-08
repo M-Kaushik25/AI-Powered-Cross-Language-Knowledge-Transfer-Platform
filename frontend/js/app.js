@@ -33,6 +33,47 @@ async function authFetch(url, options = {}) {
   return res;
 }
 
+async function loadSystemHealthAndMode() {
+  try {
+    const res = await fetch(`${API_BASE}/health`);
+    if (!res.ok) return;
+    const data = await res.json();
+    updateSystemModeBanner(data.mode, data.engine);
+  } catch (err) {
+    console.error("Health check error:", err);
+  }
+}
+
+function updateSystemModeBanner(mode, engine) {
+  const banner = document.getElementById('system-mode-banner');
+  const titleEl = document.getElementById('banner-mode-title');
+  const descEl = document.getElementById('banner-mode-desc');
+  const tagEl = document.getElementById('banner-engine-tag');
+  const sideTextEl = document.getElementById('system-mode-text');
+
+  const isLive = mode === 'live';
+  if (banner) {
+    banner.classList.toggle('mode-live', isLive);
+    banner.classList.toggle('mode-offline', !isLive);
+  }
+  if (titleEl) {
+    titleEl.textContent = isLive
+      ? "OPERATIONAL MODE: LIVE (Neural Multi-Agent Active)"
+      : "OPERATIONAL MODE: OFFLINE DEMO (Deterministic Engine)";
+  }
+  if (descEl) {
+    descEl.textContent = isLive
+      ? "Live LLM generation active with strict 502 error surfacing and boundary validation."
+      : "Live LLM offline; running deterministic extractive summarization and verified domain mappings.";
+  }
+  if (tagEl) {
+    tagEl.textContent = `Engine: ${engine || (isLive ? 'live:gemini-1.5-flash' : 'offline_deterministic')}`;
+  }
+  if (sideTextEl) {
+    sideTextEl.textContent = isLive ? "Live LLM Pipeline" : "Deterministic Engine";
+  }
+}
+
 function updateUserSessionUI() {
   const profileBadge = document.getElementById('user-profile-badge');
   const btnLogin = document.getElementById('btn-open-login');
@@ -93,6 +134,7 @@ const SAMPLE_SENTENCES = [
 document.addEventListener('DOMContentLoaded', async () => {
   initNavigation();
   initModals();
+  await loadSystemHealthAndMode();
   await ensureAuthenticated();
   if (authToken) {
     loadInitialData();
@@ -338,7 +380,7 @@ function renderKGTable(terms) {
         <td>${t.confidence ? (t.confidence * 100).toFixed(0) + '%' : '95%'}</td>
         <td><span class="badge-tag badge-verified">${t.status}</span></td>
         <td>
-          <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 11px;" onclick="openEditTermModal('${t.id}', '${escapeHtml(t.source_term)}', '${t.domain}')">
+          <button class="btn btn-secondary btn-edit-term" style="padding: 4px 8px; font-size: 11px;" data-term-id="${t.id}" data-term-source="${escapeHtml(t.source_term)}" data-term-domain="${t.domain}">
             <i class="fa-solid fa-pen"></i> Edit
           </button>
         </td>
@@ -413,57 +455,111 @@ function renderReviewQueue(items) {
     return;
   }
 
-  container.innerHTML = items.map(item => `
-    <div class="glass-card" style="border-left: 4px solid var(--accent-amber);" id="review-card-${item.id}">
-      <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px;">
-        <div>
-          <span class="badge-tag badge-warning" style="margin-right: 8px;">
-            <i class="fa-solid fa-triangle-exclamation"></i> Calibrated Confidence: ${(item.confidence * 100).toFixed(1)}% (&lt; 85%)
-          </span>
-          <span style="font-size: 12px; color: var(--text-muted);">Target: ${item.target_lang.toUpperCase()} | Domain: ${item.domain}</span>
-        </div>
-        <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 11px;" onclick="dismissReviewItem('${item.id}')">
-          <i class="fa-solid fa-xmark"></i> Dismiss
-        </button>
-      </div>
+  container.innerHTML = items.map(item => {
+    // Associated multiple terms
+    const termsList = item.terms && item.terms.length > 0
+      ? item.terms
+      : [{ term_text: item.term_text, term_status: 'FLAGGED_TERM' }];
 
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
-        <div style="background: rgba(255,255,255,0.02); padding: 12px 14px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
-          <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; margin-bottom: 4px;">Source Segment</div>
-          <div style="font-size: 13.5px; line-height: 1.5;">${escapeHtml(item.source_segment)}</div>
-        </div>
+    const termsHtml = termsList.map(t => `
+      <span class="term-tag" style="font-size: 11px; margin-right: 6px;">
+        <i class="fa-solid fa-tag"></i> ${escapeHtml(t.term_text)}
+        <small style="opacity: 0.7;">(${escapeHtml(t.term_status || 'UNKNOWN')})</small>
+      </span>
+    `).join('');
 
-        <div style="background: rgba(255,255,255,0.02); padding: 12px 14px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
-          <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; margin-bottom: 4px;">Translator Draft</div>
-          <div style="font-size: 13.5px; line-height: 1.5;">${escapeHtml(item.target_segment)}</div>
-        </div>
-      </div>
+    // Approvals consensus count (n of N)
+    const approvalsCount = item.approvals_count !== undefined ? item.approvals_count : 0;
+    const requiredApprovals = item.required_approvals !== undefined ? item.required_approvals : 2;
+    const approvalsBadgeClass = approvalsCount >= requiredApprovals ? 'badge-verified' : 'badge-warning';
 
-      <div style="background: rgba(245, 158, 11, 0.08); padding: 10px 14px; border-radius: var(--radius-sm); font-size: 12px; color: #fbbf24; margin-bottom: 16px;">
-        <i class="fa-solid fa-stethoscope"></i> <strong>Critic Audit:</strong> ${escapeHtml(item.critic_notes || 'Low confidence verification threshold triggered.')}
-      </div>
+    // Prior reviewers identities and roles
+    const priorReviewers = (item.approvals || []).map(a =>
+      `${escapeHtml(a.reviewer_id || 'Reviewer')} (${escapeHtml(a.reviewer_role || 'REVIEWER')})`
+    ).join(', ');
 
-      <!-- Human Correction & Self-Update Trigger -->
-      <div style="display: flex; gap: 12px; align-items: center;">
-        <div style="flex: 1;">
-          <label style="font-size: 11.5px; color: var(--text-muted); display: block; margin-bottom: 4px;">
-            Target Term: <strong>${escapeHtml(item.term_text)}</strong> &rarr; Approved Translation:
-          </label>
-          <input type="text" class="chat-input" id="correct-input-${item.id}" value="${escapeHtml(item.term_text)}" placeholder="Enter corrected target language rendering">
-        </div>
-        <div style="align-self: flex-end;">
-          <button class="btn btn-primary" onclick="submitHumanCorrection('${item.id}')">
-            <i class="fa-solid fa-code-branch"></i> Approve & Self-Update KG
+    return `
+      <div class="glass-card" style="border-left: 4px solid var(--accent-amber);" id="review-card-${item.id}">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
+          <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <span class="badge-tag badge-warning">
+              <i class="fa-solid fa-triangle-exclamation"></i> Calibrated Confidence: ${(item.confidence * 100).toFixed(1)}% (&lt; 85%)
+            </span>
+            <span class="badge-tag ${approvalsBadgeClass}">
+              <i class="fa-solid fa-users-viewfinder"></i> Consensus: ${approvalsCount} / ${requiredApprovals} Approvals
+            </span>
+            <span style="font-size: 12px; color: var(--text-muted);">Target: ${item.target_lang.toUpperCase()} | Domain: ${item.domain}</span>
+          </div>
+          <button class="btn btn-secondary btn-dismiss-review" style="padding: 4px 8px; font-size: 11px;" data-action="dismiss" data-item-id="${item.id}">
+            <i class="fa-solid fa-xmark"></i> Dismiss
           </button>
         </div>
+
+        <!-- Associated terms in this segment -->
+        <div style="margin-bottom: 12px; display: flex; align-items: center; flex-wrap: wrap;">
+          <span style="font-size: 11.5px; color: var(--text-muted); margin-right: 8px;">Associated Terms:</span>
+          ${termsHtml}
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+          <div style="background: rgba(255,255,255,0.02); padding: 12px 14px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+            <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; margin-bottom: 4px;">Source Segment</div>
+            <div style="font-size: 13.5px; line-height: 1.5;">${escapeHtml(item.source_segment)}</div>
+          </div>
+
+          <div style="background: rgba(255,255,255,0.02); padding: 12px 14px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+            <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; margin-bottom: 4px;">Translator Draft</div>
+            <div style="font-size: 13.5px; line-height: 1.5;">${escapeHtml(item.target_segment)}</div>
+          </div>
+        </div>
+
+        <div style="background: rgba(245, 158, 11, 0.08); padding: 10px 14px; border-radius: var(--radius-sm); font-size: 12px; color: #fbbf24; margin-bottom: 12px;">
+          <i class="fa-solid fa-stethoscope"></i> <strong>Critic Audit:</strong> ${escapeHtml(item.critic_notes || 'Low confidence verification threshold triggered.')}
+          ${priorReviewers ? `<div style="margin-top: 4px; font-size: 11.5px; opacity: 0.9;"><i class="fa-solid fa-check"></i> Prior Approvals: ${priorReviewers}</div>` : ''}
+        </div>
+
+        <!-- Validation Error Message Box -->
+        <div id="review-error-${item.id}" class="badge-tag" style="display: none; margin-bottom: 12px; color: #fca5a5; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); width: 100%; padding: 8px 12px; font-size: 12px;"></div>
+
+        <!-- Human Correction & Self-Update Trigger -->
+        <div style="display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap;">
+          <div style="flex: 2; min-width: 220px;">
+            <label style="font-size: 11.5px; color: var(--text-muted); display: block; margin-bottom: 4px;">
+              Target Term: <strong>${escapeHtml(item.term_text)}</strong> &rarr; Approved Translation:
+            </label>
+            <input type="text" class="chat-input" id="correct-input-${item.id}" value="${escapeHtml(item.term_text)}" placeholder="Enter corrected target language rendering">
+          </div>
+          <div style="flex: 2; min-width: 200px;">
+            <label style="font-size: 11.5px; color: var(--text-muted); display: block; margin-bottom: 4px;">
+              Reviewer Rationale Notes:
+            </label>
+            <input type="text" class="chat-input" id="comment-input-${item.id}" placeholder="e.g., Domain expert consensus verified">
+          </div>
+          <div>
+            <button class="btn btn-primary btn-submit-correct" data-action="correct" data-item-id="${item.id}">
+              <i class="fa-solid fa-code-branch"></i> Approve & Self-Update KG
+            </button>
+          </div>
+        </div>
       </div>
-    </div>
-  `).join('');
+    `;
+  }).join('');
 }
 
 async function submitHumanCorrection(itemId) {
-  const correctedTranslation = document.getElementById(`correct-input-${itemId}`).value.trim();
+  const correctedInput = document.getElementById(`correct-input-${itemId}`);
+  const commentInput = document.getElementById(`comment-input-${itemId}`);
+  const errBox = document.getElementById(`review-error-${itemId}`);
+  if (errBox) errBox.style.display = 'none';
+
+  const correctedTranslation = correctedInput ? correctedInput.value.trim() : '';
+  const reviewerComment = commentInput ? commentInput.value.trim() : '';
+
   if (!correctedTranslation) {
+    if (errBox) {
+      errBox.textContent = "Please provide the approved term translation.";
+      errBox.style.display = 'block';
+    }
     showToast("Please provide the approved term translation.");
     return;
   }
@@ -474,11 +570,21 @@ async function submitHumanCorrection(itemId) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         corrected_translation: correctedTranslation,
-        reviewer_comment: "Approved by human reviewer; persistent KG version incremented"
+        reviewer_comment: reviewerComment || "Approved by human reviewer; consensus gate updated."
       })
     });
 
     const data = await res.json();
+    if (!res.ok) {
+      const errMsg = data.detail || data.message || "Approval rejected by server validation.";
+      if (errBox) {
+        errBox.textContent = errMsg;
+        errBox.style.display = 'block';
+      }
+      showToast(errMsg);
+      return;
+    }
+
     showToast(data.message || "Feedback applied! Living KG self-evolved.");
 
     // Animate and remove card
@@ -492,6 +598,10 @@ async function submitHumanCorrection(itemId) {
     }
   } catch (err) {
     console.error("Correction error:", err);
+    if (errBox) {
+      errBox.textContent = "Network error while submitting review.";
+      errBox.style.display = 'block';
+    }
     showToast("Failed to apply correction.");
   }
 }
@@ -539,8 +649,17 @@ async function runAdaptiveSummarization() {
     document.getElementById('adaptive-results-row').style.display = 'grid';
     document.getElementById('novice-output-content').innerText = data.novice_adaptation.text;
     document.getElementById('expert-output-content').innerText = data.expert_adaptation.text;
-    document.getElementById('novice-complexity-tag').innerText = `Complexity: Low (${data.novice_adaptation.complexity_index})`;
-    document.getElementById('expert-complexity-tag').innerText = `Complexity: Rigorous (${data.expert_adaptation.complexity_index})`;
+
+    const novComp = data.novice_adaptation.complexity_index !== undefined ? data.novice_adaptation.complexity_index : (data.novice_adaptation.readability_score || '--');
+    const expComp = data.expert_adaptation.complexity_index !== undefined ? data.expert_adaptation.complexity_index : (data.expert_adaptation.readability_score || '--');
+    const novMetric = data.novice_adaptation.metric_name || 'Lexical';
+    const expMetric = data.expert_adaptation.metric_name || 'Lexical';
+    document.getElementById('novice-complexity-tag').textContent = `Reading Ease: ${novComp} (${novMetric})`;
+    document.getElementById('expert-complexity-tag').textContent = `Reading Ease: ${expComp} (${expMetric})`;
+
+    if (data.mode || data.engine) {
+      updateSystemModeBanner(data.mode, data.engine);
+    }
 
     showToast("Generated Novice & Expert adaptations!");
   } catch (err) {
@@ -647,6 +766,7 @@ async function loadDocuments() {
 
 function renderDocumentCards(docs) {
   const container = document.getElementById('documents-list-grid');
+  if (!container) return;
   if (!docs || docs.length === 0) {
     container.innerHTML = `<div class="glass-card"><p style="color: var(--text-muted);">No documents indexed yet.</p></div>`;
     return;
@@ -664,9 +784,9 @@ function renderDocumentCards(docs) {
         <span class="badge-tag badge-verified">${doc.chunk_count} Chunks</span>
       </div>
       <p style="font-size: 13px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 16px;">
-        ${escapeHtml(doc.raw_text.substring(0, 160))}...
+        ${escapeHtml((doc.raw_text || '').substring(0, 160))}...
       </p>
-      <button class="btn btn-secondary" style="width: 100%; font-size: 12px;" onclick="viewDocumentChunks('${doc.id}', '${escapeHtml(doc.filename)}')">
+      <button class="btn btn-secondary btn-inspect-chunks" style="width: 100%; font-size: 12px;" data-doc-id="${doc.id}" data-doc-name="${escapeHtml(doc.filename)}">
         <i class="fa-solid fa-layer-group"></i> Inspect Chunks & Pinned Terms
       </button>
     </div>
@@ -719,14 +839,14 @@ async function handleUploadDocSubmit(e) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// IEEE Evaluation & Ablation Hub
+// IEEE Evaluation & Ablation Hub (Real Empirical Schema)
 // ─────────────────────────────────────────────────────────────
 async function loadEvaluationAblation() {
   try {
     const res = await authFetch(`${API_BASE}/eval/latest`);
     if (!res.ok) return;
     const data = await res.json();
-    renderEvaluationCharts(data.metrics || data);
+    renderEvaluationCharts(data);
   } catch (err) {
     console.error("Error loading evaluation:", err);
   }
@@ -735,34 +855,50 @@ async function loadEvaluationAblation() {
 async function triggerAblationRun() {
   const btn = document.getElementById('btn-run-ablation-benchmark');
   btn.disabled = true;
-  btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Running Ablation Simulation...`;
+  btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Running Empirical Benchmark...`;
 
   try {
     const domain = document.getElementById('global-domain-select').value;
+    const targetLang = document.getElementById('global-target-lang').value;
     const res = await authFetch(`${API_BASE}/eval/run`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ domain: domain })
+      body: JSON.stringify({ domain: domain, target_lang: targetLang })
     });
     const data = await res.json();
-    renderEvaluationCharts(data.metrics);
-    showToast("Ablation benchmark completed!");
+    if (!res.ok) {
+      showToast(data.detail || "Error running evaluation.");
+      return;
+    }
+    renderEvaluationCharts(data);
+    showToast(`Empirical evaluation complete (ID: ${data.eval_id.slice(0, 8)})!`);
   } catch (err) {
     console.error("Ablation error:", err);
-    showToast("Error running ablation.");
+    showToast("Error running evaluation benchmark.");
   } finally {
     btn.disabled = false;
     btn.innerHTML = `<i class="fa-solid fa-flask"></i> Run Multi-Round Ablation`;
   }
 }
 
-function renderEvaluationCharts(metrics) {
-  const rounds = metrics.rounds || [];
-  const comparison = metrics.comparison || [];
+function renderEvaluationCharts(data) {
+  if (!data) return;
+  const metrics = data.metrics || data;
+  const conditions = data.conditions || metrics.conditions || {};
+  const rounds = data.evolution_rounds || data.rounds || metrics.evolution_rounds || metrics.rounds || [];
+  const statusFlag = data.status || metrics.status || "EMPIRICAL_BENCHMARK";
 
-  const roundLabels = rounds.map(r => r.round);
-  const tsrValues = rounds.map(r => r.tsr_percentage !== undefined ? r.tsr_percentage : r.term_usage_rate_percent);
-  const reviewValues = rounds.map(r => r.review_volume_percentage !== undefined ? r.review_volume_percentage : r.review_rate_percent);
+  // Evidence Status Badge
+  const statusBadge = document.getElementById('eval-evidence-badge');
+  if (statusBadge) {
+    statusBadge.textContent = `Evidence Tier: ${statusFlag}`;
+    statusBadge.className = statusFlag.includes("OFFLINE") ? "badge-tag badge-warning" : "badge-tag badge-verified";
+  }
+
+  // Round metrics for charts
+  const roundLabels = rounds.map(r => `Round ${r.round || r.round_number || 1}`);
+  const tsrValues = rounds.map(r => r.tsr_percentage !== undefined ? r.tsr_percentage : (r.term_usage_rate_percent || 0));
+  const reviewValues = rounds.map(r => r.review_volume_percentage !== undefined ? r.review_volume_percentage : (r.review_rate_percent || 0));
 
   // Chart 1: TSR
   const ctxTSR = document.getElementById('chart-tsr-rounds');
@@ -823,19 +959,41 @@ function renderEvaluationCharts(metrics) {
     });
   }
 
-  // Populate Comparison Table
+  // Populate Comparative Systems Benchmark Table (Zero Fabrications)
   const tbody = document.getElementById('eval-benchmark-tbody');
-  if (tbody && comparison.length > 0) {
-    tbody.innerHTML = comparison.map(row => `
-      <tr>
-        <td><strong>${escapeHtml(row.system)}</strong></td>
-        <td><span class="badge-tag ${row.tsr >= 95 ? 'badge-verified' : 'badge-warning'}">${row.tsr}%</span></td>
-        <td>${row.review_mode}</td>
-        <td>${row.review_volume}%</td>
-        <td>${row.self_updating ? '<i class="fa-solid fa-check" style="color: var(--accent-emerald);"></i> Yes' : '<i class="fa-solid fa-xmark" style="color: var(--accent-rose);"></i> No'}</td>
-        <td>${row.adaptive_summarization ? '<i class="fa-solid fa-check" style="color: var(--accent-emerald);"></i> Yes' : '<i class="fa-solid fa-xmark" style="color: var(--accent-rose);"></i> No'}</td>
-      </tr>
-    `).join('');
+  if (tbody) {
+    const conditionMeta = [
+      { key: "B1_generic_mt", label: "B1: Generic Machine Translation (Zero Constraints)" },
+      { key: "B2_static_glossary", label: "B2: Static Bilingual Glossary (Exact String Sub)" },
+      { key: "P_proposed_pipeline", label: "P: Proposed CL-RAG Pipeline (Full Multi-Agent + KG)" },
+      { key: "Ablation_no_unknown_detection", label: "Ablation: Proposed Pipeline w/o Unknown-Term Gating" }
+    ];
+
+    tbody.innerHTML = conditionMeta.map(item => {
+      const c = conditions[item.key] || {};
+      const tsr = c.tsr !== undefined ? Number(c.tsr).toFixed(2) : '--';
+      const bleu = c.bleu !== undefined ? Number(c.bleu).toFixed(2) : '--';
+      const chrf = c.chrf !== undefined ? Number(c.chrf).toFixed(2) : '--';
+      const auroc = c.auroc !== undefined ? Number(c.auroc).toFixed(3) : '--';
+      const ece = c.ece !== undefined ? Number(c.ece).toFixed(3) : '--';
+      const revVol = c.review_volume_percentage !== undefined ? `${Number(c.review_volume_percentage).toFixed(1)}%` : '--';
+      const latP50 = c.latency_p50 !== undefined ? Number(c.latency_p50).toFixed(3) : '--';
+      const latP95 = c.latency_p95 !== undefined ? Number(c.latency_p95).toFixed(3) : '--';
+      const latencyStr = `${latP50}s / ${latP95}s`;
+
+      return `
+        <tr>
+          <td><strong>${escapeHtml(item.label)}</strong></td>
+          <td><span class="badge-tag ${Number(tsr) >= 90 ? 'badge-verified' : 'badge-warning'}">${tsr}%</span></td>
+          <td>${bleu}</td>
+          <td>${chrf}</td>
+          <td>${auroc}</td>
+          <td>${ece}</td>
+          <td>${revVol}</td>
+          <td style="font-family: var(--font-mono); font-size: 12px;">${latencyStr}</td>
+        </tr>
+      `;
+    }).join('');
   }
 }
 
@@ -924,6 +1082,50 @@ function setupEventListeners() {
 
   document.getElementById('form-auth-login')?.addEventListener('submit', handleLoginSubmit);
   document.getElementById('form-auth-register')?.addEventListener('submit', handleRegisterSubmit);
+
+  // Delegated event listener for Review Queue actions (dismiss / correct)
+  const reviewContainer = document.getElementById('review-queue-list');
+  reviewContainer?.addEventListener('click', async (e) => {
+    const dismissBtn = e.target.closest('[data-action="dismiss"]');
+    if (dismissBtn) {
+      const itemId = dismissBtn.dataset.itemId;
+      await dismissReviewItem(itemId);
+      return;
+    }
+    const correctBtn = e.target.closest('[data-action="correct"]');
+    if (correctBtn) {
+      const itemId = correctBtn.dataset.itemId;
+      await submitHumanCorrection(itemId);
+      return;
+    }
+  });
+
+  // Delegated event listener for Living KG edit term buttons
+  const kgTableBody = document.getElementById('kg-terms-tbody');
+  kgTableBody?.addEventListener('click', (e) => {
+    const editBtn = e.target.closest('.btn-edit-term');
+    if (editBtn) {
+      openEditTermModal(editBtn.dataset.termId, editBtn.dataset.termSource, editBtn.dataset.termDomain);
+    }
+  });
+
+  // Delegated event listener for Document inspect chunks buttons
+  const docContainer = document.getElementById('documents-list-grid');
+  docContainer?.addEventListener('click', (e) => {
+    const inspectBtn = e.target.closest('.btn-inspect-chunks');
+    if (inspectBtn) {
+      viewDocumentChunks(inspectBtn.dataset.docId, inspectBtn.dataset.docName);
+    }
+  });
+
+  // Delegated event listener for Modal Close buttons
+  document.addEventListener('click', (e) => {
+    const closeBtn = e.target.closest('[data-close-modal]');
+    if (closeBtn) {
+      const modalId = closeBtn.getAttribute('data-close-modal');
+      closeModal(modalId);
+    }
+  });
 }
 
 async function handleLoginSubmit(e) {
