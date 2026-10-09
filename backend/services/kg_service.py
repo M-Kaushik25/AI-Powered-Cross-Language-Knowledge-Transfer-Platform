@@ -554,11 +554,14 @@ class KnowledgeGraphService:
                             VALUES (?, ?, ?, ?, ?, ?)
                         """, (str(uuid.uuid4()), src_row["id"], tgt_row["id"], rel_type, rel_conf, now))
 
-    def get_all_terms(self, domain: str | None = None, search: str | None = None) -> list[dict[str, Any]]:
+    def get_all_terms(self, domain: str | None = None, search: str | None = None, tenant_id: str | None = None) -> list[dict[str, Any]]:
         with get_db() as conn:
             cursor = conn.cursor()
             query = "SELECT * FROM terms WHERE 1=1"
             params = []
+            if tenant_id:
+                query += " AND (tenant_id = ? OR tenant_id = 'default_org')"
+                params.append(tenant_id)
             if domain and domain != "all":
                 query += " AND domain = ?"
                 params.append(domain)
