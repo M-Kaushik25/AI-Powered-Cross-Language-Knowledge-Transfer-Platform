@@ -80,19 +80,36 @@ function updateUserSessionUI() {
   const nameEl = document.getElementById('user-display-name');
   const roleEl = document.getElementById('user-display-role');
 
+  const sidebarLoggedIn = document.getElementById('sidebar-user-logged-in');
+  const sidebarLoggedOut = document.getElementById('sidebar-user-logged-out');
+  const sidebarName = document.getElementById('sidebar-user-name');
+  const sidebarRole = document.getElementById('sidebar-user-role');
+  const sidebarTenant = document.getElementById('sidebar-user-tenant');
+
   if (currentUser && authToken) {
     if (profileBadge) profileBadge.style.display = 'flex';
     if (btnLogin) btnLogin.style.display = 'none';
     if (nameEl) nameEl.textContent = currentUser.name || currentUser.email;
+
+    const roleColors = {
+      ADMIN: '#dc2626',
+      REVIEWER: '#2563eb',
+      USER: '#16a34a'
+    };
+
     if (roleEl) {
       roleEl.textContent = currentUser.role || 'USER';
-      const roleColors = {
-        ADMIN: '#dc2626',
-        REVIEWER: '#2563eb',
-        USER: '#16a34a'
-      };
       roleEl.style.background = roleColors[currentUser.role] || '#2563eb';
     }
+
+    if (sidebarLoggedIn) sidebarLoggedIn.style.display = 'flex';
+    if (sidebarLoggedOut) sidebarLoggedOut.style.display = 'none';
+    if (sidebarName) sidebarName.textContent = currentUser.name || currentUser.email;
+    if (sidebarRole) {
+      sidebarRole.textContent = currentUser.role || 'USER';
+      sidebarRole.style.background = roleColors[currentUser.role] || '#2563eb';
+    }
+    if (sidebarTenant) sidebarTenant.textContent = currentUser.tenant_id || 'default_org';
 
     // Role-aware UI gating
     const isReviewerOrAdmin = ['ADMIN', 'REVIEWER'].includes(currentUser.role);
@@ -111,6 +128,8 @@ function updateUserSessionUI() {
   } else {
     if (profileBadge) profileBadge.style.display = 'none';
     if (btnLogin) btnLogin.style.display = 'inline-block';
+    if (sidebarLoggedIn) sidebarLoggedIn.style.display = 'none';
+    if (sidebarLoggedOut) sidebarLoggedOut.style.display = 'block';
   }
 }
 
@@ -134,12 +153,12 @@ const SAMPLE_SENTENCES = [
 document.addEventListener('DOMContentLoaded', async () => {
   initNavigation();
   initModals();
+  setupEventListeners();
   await loadSystemHealthAndMode();
   await ensureAuthenticated();
   if (authToken) {
     loadInitialData();
   }
-  setupEventListeners();
 });
 
 // ─────────────────────────────────────────────────────────────
@@ -1064,7 +1083,23 @@ function setupEventListeners() {
 
   // Authentication UI Controls
   document.getElementById('btn-open-login')?.addEventListener('click', () => openModal('modal-auth'));
+  document.getElementById('btn-sidebar-login')?.addEventListener('click', () => openModal('modal-auth'));
+  document.getElementById('nav-item-auth')?.addEventListener('click', () => openModal('modal-auth'));
   document.getElementById('btn-logout')?.addEventListener('click', handleLogout);
+  document.getElementById('btn-sidebar-logout')?.addEventListener('click', handleLogout);
+
+  // Quick 1-click Demo Login
+  document.querySelectorAll('.quick-login-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const emailInput = document.getElementById('auth-login-email');
+      const passInput = document.getElementById('auth-login-password');
+      if (emailInput && passInput) {
+        emailInput.value = btn.dataset.email;
+        passInput.value = btn.dataset.pass;
+        document.getElementById('form-auth-login')?.dispatchEvent(new Event('submit'));
+      }
+    });
+  });
 
   document.getElementById('tab-auth-login')?.addEventListener('click', () => {
     document.getElementById('tab-auth-login').className = 'btn btn-primary';

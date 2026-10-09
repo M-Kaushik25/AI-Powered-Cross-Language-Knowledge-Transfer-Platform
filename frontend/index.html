@@ -80,7 +80,41 @@
         <i class="fa-solid fa-chart-line"></i>
         <span>Evaluation & Ablation Hub</span>
       </div>
+
+      <div class="nav-section-title">Access Control</div>
+      <div class="nav-item" id="nav-item-auth">
+        <i class="fa-solid fa-user-lock"></i>
+        <span>Account & Sign In</span>
+      </div>
     </nav>
+
+    <!-- User Account & Session Card in Sidebar -->
+    <div class="sidebar-user-card" id="sidebar-user-card">
+      <div id="sidebar-user-logged-in" style="display: none; align-items: center; justify-content: space-between; width: 100%; gap: 10px;">
+        <div style="display: flex; align-items: center; gap: 10px; overflow: hidden;">
+          <div class="user-avatar" id="sidebar-user-avatar">
+            <i class="fa-solid fa-user-shield"></i>
+          </div>
+          <div style="overflow: hidden;">
+            <div id="sidebar-user-name" style="font-weight: 600; font-size: 13px; white-space: nowrap; text-overflow: ellipsis; overflow: hidden;">Guest</div>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span id="sidebar-user-role" class="badge-tag" style="font-size: 10px; padding: 1px 6px;">USER</span>
+              <span id="sidebar-user-tenant" style="font-size: 11px; color: var(--text-muted);">default_org</span>
+            </div>
+          </div>
+        </div>
+        <button id="btn-sidebar-logout" class="btn btn-secondary" style="padding: 6px 8px; font-size: 11px;" title="Sign Out">
+          <i class="fa-solid fa-right-from-bracket"></i>
+        </button>
+      </div>
+
+      <div id="sidebar-user-logged-out" style="width: 100%;">
+        <button id="btn-sidebar-login" class="btn btn-primary" style="width: 100%; font-size: 13px; padding: 10px 14px; gap: 8px;">
+          <i class="fa-solid fa-right-to-bracket"></i>
+          <span>Sign In / Register</span>
+        </button>
+      </div>
+    </div>
 
     <div class="sidebar-footer">
       <div class="system-status-indicator">
@@ -702,8 +736,23 @@
       </div>
       <div id="auth-login-error" style="color: #ef4444; font-size: 12px; display: none;"></div>
       <button type="submit" class="btn btn-primary" style="width: 100%;"><i class="fa-solid fa-right-to-bracket"></i> Sign In</button>
-      <div style="font-size: 11px; color: var(--text-muted); text-align: center; margin-top: 6px;">
-        Demo Seed Accounts: <code>admin@clrag.org</code> (ADMIN) &bull; <code>reviewer@clrag.org</code> (REVIEWER) &bull; <code>user@clrag.org</code> (USER)
+      
+      <!-- Quick Demo One-Click Sign In -->
+      <div style="margin-top: 6px; padding: 12px; background: rgba(255, 255, 255, 0.03); border: 1px dashed var(--border-medium); border-radius: var(--radius-md);">
+        <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 8px; font-weight: 600; text-transform: uppercase;">
+          <i class="fa-solid fa-bolt" style="color: #f59e0b;"></i> Quick One-Click Sign In (Demo Roles)
+        </div>
+        <div style="display: flex; gap: 6px;">
+          <button type="button" class="btn btn-secondary quick-login-btn" data-email="admin@clrag.org" data-pass="AdminPassword123!" style="flex: 1; padding: 7px 6px; font-size: 11px;">
+            <i class="fa-solid fa-crown" style="color: #ef4444;"></i> Admin
+          </button>
+          <button type="button" class="btn btn-secondary quick-login-btn" data-email="reviewer@clrag.org" data-pass="ReviewerPassword123!" style="flex: 1; padding: 7px 6px; font-size: 11px;">
+            <i class="fa-solid fa-user-check" style="color: #3b82f6;"></i> Reviewer
+          </button>
+          <button type="button" class="btn btn-secondary quick-login-btn" data-email="user@clrag.org" data-pass="UserPassword123!" style="flex: 1; padding: 7px 6px; font-size: 11px;">
+            <i class="fa-solid fa-user" style="color: #10b981;"></i> User
+          </button>
+        </div>
       </div>
     </form>
 
