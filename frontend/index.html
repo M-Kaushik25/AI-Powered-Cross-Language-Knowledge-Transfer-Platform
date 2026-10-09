@@ -122,8 +122,31 @@
         <div class="badge-tag badge-verified" id="gating-threshold-badge" title="Gating Threshold: Terms below this confidence route to Human Review">
           <i class="fa-solid fa-filter"></i> Gate: &tau; &ge; 0.85
         </div>
+
+        <!-- User Session & Role Badge -->
+        <div id="user-session-container" style="display: flex; align-items: center; gap: 8px;">
+          <div id="user-profile-badge" style="display: none; background: rgba(59, 130, 246, 0.15); border: 1px solid #3b82f6; color: #93c5fd; padding: 4px 10px; border-radius: 6px; font-size: 12px; align-items: center; gap: 6px;">
+            <i class="fa-solid fa-user-shield"></i>
+            <span id="user-display-name">Guest</span>
+            <span id="user-display-role" class="badge-tag" style="font-size: 10px; padding: 2px 6px; background: #2563eb; color: #fff;">USER</span>
+            <button id="btn-logout" class="btn btn-secondary" style="padding: 2px 6px; font-size: 11px; margin-left: 4px;" title="Sign Out"><i class="fa-solid fa-right-from-bracket"></i></button>
+          </div>
+          <button id="btn-open-login" class="btn btn-primary" style="padding: 5px 12px; font-size: 12px;"><i class="fa-solid fa-lock"></i> Sign In</button>
+        </div>
       </div>
     </header>
+
+    <!-- Persistent System Operational Mode Banner -->
+    <div id="system-mode-banner" class="system-mode-banner mode-offline">
+      <div class="banner-left">
+        <span class="mode-dot" id="banner-mode-dot"></span>
+        <span id="banner-mode-title" class="banner-title">OPERATIONAL MODE: OFFLINE DEMO (Deterministic Engine)</span>
+        <span id="banner-mode-desc" class="banner-desc">Live LLM offline; running deterministic extractive pipelines.</span>
+      </div>
+      <div class="banner-right">
+        <span id="banner-engine-tag" class="badge-tag">Engine: offline_deterministic</span>
+      </div>
+    </div>
 
     <div class="content-scrollable">
 
@@ -241,11 +264,11 @@
               <div style="display: flex; align-items: center; gap: 20px;">
                 <div>
                   <span style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Avg Confidence</span>
-                  <div style="font-family: var(--font-display); font-size: 20px; font-weight: 700; color: var(--accent-emerald);" id="telemetry-avg-conf">0.96</div>
+                  <div style="font-family: var(--font-display); font-size: 20px; font-weight: 700; color: var(--accent-emerald);" id="telemetry-avg-conf">--</div>
                 </div>
                 <div>
                   <span style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Term-Usage Rate</span>
-                  <div style="font-family: var(--font-display); font-size: 20px; font-weight: 700; color: var(--accent-cyan);" id="telemetry-tsr">100%</div>
+                  <div style="font-family: var(--font-display); font-size: 20px; font-weight: 700; color: var(--accent-cyan);" id="telemetry-tsr">--</div>
                 </div>
                 <div>
                   <span style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Review Routing</span>
@@ -404,7 +427,7 @@
               <span class="badge-tag" style="background: rgba(6, 182, 212, 0.15); color: #22d3ee; border: 1px solid rgba(6, 182, 212, 0.3);">
                 <i class="fa-solid fa-seedling"></i> NOVICE READER LEVEL
               </span>
-              <span style="font-size: 12px; color: var(--text-muted);" id="novice-complexity-tag">Reading Complexity: Low (42.5)</span>
+              <span style="font-size: 12px; color: var(--text-muted);" id="novice-complexity-tag">Reading Ease: --</span>
             </div>
             <div id="novice-output-content" style="font-size: 14px; line-height: 1.7; color: var(--text-primary); white-space: pre-wrap;">--</div>
           </div>
@@ -415,7 +438,7 @@
               <span class="badge-tag" style="background: rgba(139, 92, 246, 0.15); color: #c4b5fd; border: 1px solid rgba(139, 92, 246, 0.3);">
                 <i class="fa-solid fa-microchip"></i> SENIOR ARCHITECT / EXPERT
               </span>
-              <span style="font-size: 12px; color: var(--text-muted);" id="expert-complexity-tag">Reading Complexity: Rigorous (88.0)</span>
+              <span style="font-size: 12px; color: var(--text-muted);" id="expert-complexity-tag">Reading Ease: --</span>
             </div>
             <div id="expert-output-content" style="font-size: 14px; line-height: 1.7; color: var(--text-primary); white-space: pre-wrap;">--</div>
           </div>
@@ -516,18 +539,21 @@
 
         <!-- Benchmark Comparison Table -->
         <div class="glass-card" style="padding: 0; overflow: hidden;">
-          <div style="padding: 16px 20px; border-bottom: 1px solid var(--border-subtle);">
+          <div style="padding: 16px 20px; border-bottom: 1px solid var(--border-subtle); display: flex; justify-content: space-between; align-items: center;">
             <h4 style="font-family: var(--font-display); font-size: 15px;">Comparative Systems Benchmark Table (IEEE Conference Submission)</h4>
+            <span id="eval-evidence-badge" class="badge-tag">Status: --</span>
           </div>
           <table class="data-table">
             <thead>
               <tr>
                 <th>System Configuration</th>
-                <th>Term Success Rate (TSR)</th>
-                <th>Review Gating Mode</th>
-                <th>Review Volume %</th>
-                <th>Self-Updating KG</th>
-                <th>Expertise Adaptation</th>
+                <th>TSR (%)</th>
+                <th>BLEU</th>
+                <th>chrF++</th>
+                <th>AUROC</th>
+                <th>ECE</th>
+                <th>Review Vol %</th>
+                <th>Latency (p50 / p95)</th>
               </tr>
             </thead>
             <tbody id="eval-benchmark-tbody">
@@ -548,7 +574,7 @@
   <div class="modal-content">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px;">
       <h3 style="font-family: var(--font-display); font-size: 18px;">Living KG Term Node</h3>
-      <button class="btn btn-secondary" style="padding: 4px 8px;" onclick="closeModal('modal-term')"><i class="fa-solid fa-xmark"></i></button>
+      <button class="btn btn-secondary" style="padding: 4px 8px;" data-close-modal="modal-term"><i class="fa-solid fa-xmark"></i></button>
     </div>
     <form id="form-add-term" style="display: flex; flex-direction: column; gap: 14px;">
       <div>
@@ -583,7 +609,7 @@
         <textarea class="textarea-control" style="min-height: 80px;" id="term-modal-def" placeholder="Technical definition and usage notes..."></textarea>
       </div>
       <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 10px;">
-        <button type="button" class="btn btn-secondary" onclick="closeModal('modal-term')">Cancel</button>
+        <button type="button" class="btn btn-secondary" data-close-modal="modal-term">Cancel</button>
         <button type="submit" class="btn btn-primary"><i class="fa-solid fa-save"></i> Save & Self-Update</button>
       </div>
     </form>
@@ -597,7 +623,7 @@
   <div class="modal-content">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px;">
       <h3 style="font-family: var(--font-display); font-size: 18px;">Ingest Knowledge Document</h3>
-      <button class="btn btn-secondary" style="padding: 4px 8px;" onclick="closeModal('modal-document')"><i class="fa-solid fa-xmark"></i></button>
+      <button class="btn btn-secondary" style="padding: 4px 8px;" data-close-modal="modal-document"><i class="fa-solid fa-xmark"></i></button>
     </div>
     <form id="form-upload-doc" style="display: flex; flex-direction: column; gap: 14px;">
       <div>
@@ -615,7 +641,7 @@
         <textarea class="textarea-control" style="min-height: 160px;" id="doc-modal-content" required placeholder="Paste technical document text here..."></textarea>
       </div>
       <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 10px;">
-        <button type="button" class="btn btn-secondary" onclick="closeModal('modal-document')">Cancel</button>
+        <button type="button" class="btn btn-secondary" data-close-modal="modal-document">Cancel</button>
         <button type="submit" class="btn btn-primary"><i class="fa-solid fa-cloud-arrow-up"></i> Ingest & Vectorize</button>
       </div>
     </form>
@@ -629,7 +655,7 @@
   <div class="modal-content">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px;">
       <h3 style="font-family: var(--font-display); font-size: 18px;">System & Engine Settings</h3>
-      <button class="btn btn-secondary" style="padding: 4px 8px;" onclick="closeModal('modal-settings')"><i class="fa-solid fa-xmark"></i></button>
+      <button class="btn btn-secondary" style="padding: 4px 8px;" data-close-modal="modal-settings"><i class="fa-solid fa-xmark"></i></button>
     </div>
     <div style="display: flex; flex-direction: column; gap: 16px;">
       <div>
@@ -643,10 +669,65 @@
         <span style="font-size: 11px; color: var(--text-muted);">If empty, the high-fidelity offline deterministic engine runs for immediate viva demonstrations.</span>
       </div>
       <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 10px;">
-        <button class="btn btn-secondary" onclick="closeModal('modal-settings')">Close</button>
+        <button class="btn btn-secondary" data-close-modal="modal-settings">Close</button>
         <button class="btn btn-primary" id="btn-save-settings"><i class="fa-solid fa-check"></i> Apply Settings</button>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────
+     Modal: Authentication (Login & Register)
+     ───────────────────────────────────────────────────────────── -->
+<div class="modal-overlay" id="modal-auth">
+  <div class="modal-content" style="max-width: 440px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+      <h3 style="font-family: var(--font-display); font-size: 18px;" id="auth-modal-title"><i class="fa-solid fa-shield-halved"></i> Platform Authentication</h3>
+      <button class="btn btn-secondary" style="padding: 4px 8px;" data-close-modal="modal-auth"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+      <button type="button" class="btn btn-primary" id="tab-auth-login" style="flex: 1;">Login</button>
+      <button type="button" class="btn btn-secondary" id="tab-auth-register" style="flex: 1;">Register</button>
+    </div>
+
+    <!-- Login Form -->
+    <form id="form-auth-login" style="display: flex; flex-direction: column; gap: 14px;">
+      <div>
+        <label style="font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 4px;">Email Address</label>
+        <input type="email" class="chat-input" id="auth-login-email" required placeholder="admin@clrag.org">
+      </div>
+      <div>
+        <label style="font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 4px;">Password</label>
+        <input type="password" class="chat-input" id="auth-login-password" required placeholder="••••••••••••">
+      </div>
+      <div id="auth-login-error" style="color: #ef4444; font-size: 12px; display: none;"></div>
+      <button type="submit" class="btn btn-primary" style="width: 100%;"><i class="fa-solid fa-right-to-bracket"></i> Sign In</button>
+      <div style="font-size: 11px; color: var(--text-muted); text-align: center; margin-top: 6px;">
+        Demo Seed Accounts: <code>admin@clrag.org</code> (ADMIN) &bull; <code>reviewer@clrag.org</code> (REVIEWER) &bull; <code>user@clrag.org</code> (USER)
+      </div>
+    </form>
+
+    <!-- Register Form -->
+    <form id="form-auth-register" style="display: none; flex-direction: column; gap: 14px;">
+      <div>
+        <label style="font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 4px;">Full Name</label>
+        <input type="text" class="chat-input" id="auth-reg-name" required placeholder="Dr. Vikram Sharma">
+      </div>
+      <div>
+        <label style="font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 4px;">Email Address</label>
+        <input type="email" class="chat-input" id="auth-reg-email" required placeholder="vikram@research.org">
+      </div>
+      <div>
+        <label style="font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 4px;">Password</label>
+        <input type="password" class="chat-input" id="auth-reg-password" required placeholder="••••••••••••">
+      </div>
+      <div>
+        <label style="font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 4px;">Organization / Tenant ID</label>
+        <input type="text" class="chat-input" id="auth-reg-tenant" value="default_org" required>
+      </div>
+      <div id="auth-reg-error" style="color: #ef4444; font-size: 12px; display: none;"></div>
+      <button type="submit" class="btn btn-primary" style="width: 100%;"><i class="fa-solid fa-user-plus"></i> Create Account</button>
+    </form>
   </div>
 </div>
 

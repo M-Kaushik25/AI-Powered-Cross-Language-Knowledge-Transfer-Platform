@@ -2,59 +2,67 @@
 
 ## 1. Authentication & Role-Based Access Control (RBAC)
 
-CL-RAG implements cryptographic authentication and role-based access control to prevent unauthorized modification of the mission-critical Living Knowledge Graph.
+CL-RAG enforces cryptographic authentication and strict role-based access control across all endpoints:
 
-### 1.1 User Roles & Privilege Matrix
+### 1.1 Route Security Policy
+- Every route requires a valid Bearer JWT **except**:
+  - `GET /api/health`
+  - `POST /api/auth/login`
+  - `POST /api/auth/register`
+- Unauthenticated requests to protected routes strictly return **HTTP 401 Unauthorized**.
+
+### 1.2 User Roles & Privilege Matrix
 
 | Role | Permissions | Endpoints Authorized |
 | :--- | :--- | :--- |
-| **`ADMIN`** | Full platform management, user auditing, term version rollback | All endpoints including `POST /api/kg/terms/{id}/rollback` |
-| **`REVIEWER`** | Approve/dismiss review queue items, update terms, verified feedback | `POST /api/kg/terms`, `POST /api/review/{id}/correct`, `POST /api/review/{id}/dismiss` |
-| **`USER`** | Ingest documents, query CL-RAG, submit candidate term suggestions | `POST /api/kg/candidates`, `POST /api/documents/*`, `POST /api/chat`, `POST /api/translate` |
+| **`ADMIN`** | Full platform management, user auditing, term version rollback, empirical evaluation execution | All endpoints including `POST /api/kg/terms/{id}/rollback` and `POST /api/eval/run` |
+| **`REVIEWER`** | Approve/dismiss review queue items, propose/update terms, participate in 2-reviewer gate | `POST /api/kg/terms`, `POST /api/kg/terms/{id}/approve`, `POST /api/review/{id}/correct`, `POST /api/review/{id}/dismiss` |
+| **`USER`** | Ingest documents, query CL-RAG spaces, run translations, submit candidate suggestions | `POST /api/kg/candidates`, `POST /api/documents/*`, `POST /api/chat`, `POST /api/translate`, `POST /api/adaptive` |
 
-### 1.2 Default Seed Credentials (Development & Evaluation)
-
-| Account Role | Email | Password | Role Key |
-| :--- | :--- | :--- | :--- |
-| **Chief Systems Architect** | `admin@clrag.org` | `AdminPassword123!` | `ADMIN` |
-| **Domain Terminology Reviewer** | `reviewer@clrag.org` | `ReviewerPassword123!` | `REVIEWER` |
-| **Research Student** | `user@clrag.org` | `UserPassword123!` | `USER` |
-
-> [!IMPORTANT]
-> Passwords are salted and hashed using native `bcrypt` (12 rounds) with input truncation safeguards to avoid 72-byte buffer overflow issues.
+### 1.3 Tenant Scoping (Multi-Tenancy)
+- All database entities (`users`, `knowledge_spaces`, `terms`, `review_queue`, `documents`) are scoped by `tenant_id`.
+- Queries are strictly isolated by the authenticated user's `tenant_id`. Cross-tenant resource access attempts return HTTP 404 or empty sets.
 
 ---
 
 ## 2. Token Security & Lifetime
 
 - **Algorithm**: HMAC-SHA256 (`HS256`).
-- **Secret Generation**: Automatically loaded from `JWT_SECRET` environment variable or generated securely using `secrets.token_hex(32)`.
-- **Token Payload**: Contains subject identifier (`sub`), authenticated role (`role`), and UTC expiration (`exp`).
-- **Default Lifespan**: 1440 minutes (24 hours).
+- **Secret Validation**: The server refuses to start in non-development environments if `JWT_SECRET` is the default placeholder or shorter than 32 characters.
+- **Token Payload**: Contains subject identifier (`sub`), authenticated role (`role`), `tenant_id`, and UTC expiration timestamp (`exp`).
+- **Password Hashing**: Uses `bcrypt` with automatic 72-byte input truncation safeguards to avoid buffer overflow issues.
 
 ---
 
 ## 3. Knowledge Graph Anti-Poisoning & Provenance
 
-To safeguard against malicious or unverified terminology injection:
-1. **Provenance Logging**: Every modification writes an immutable record to `term_audit_log` detailing `term_id`, `version`, `action`, `changed_by` (authenticated user UUID), `old_value_json`, `new_value_json`, `reviewer_notes`, and timestamp.
-2. **Version Rollback**: If an erroneous or poisoned term is approved, administrators can invoke `POST /api/kg/terms/{term_id}/rollback` specifying `target_version`. The engine reads the historical audit log, restores prior translations, increments the version with action `ROLLBACK`, and re-logs provenance.
-3. **Staged Candidate Ingestion**: Standard users cannot directly write to the approved Knowledge Graph. User suggestions are staged with `status = 'CANDIDATE'` and confidence $0.50$ pending Reviewer approval.
+To safeguard against malicious, corrupted, or unverified terminology injection:
+
+1. **Two-Reviewer Consensus Gate ($N=2$)**:
+   - Proposed terms or corrections enter `PROPOSED` status.
+   - A term is only activated when approved by $N=2$ distinct reviewers.
+   - The user who submitted the proposal cannot approve their own submission.
+2. **Unicode Script Validation**:
+   - Translations submitted for Indic or non-Latin languages are validated against their respective Unicode block (e.g., Devanagari for Hindi, Tamil script for Tamil).
+   - Latin loanwords and acronyms are permitted, but corrupt script submissions (e.g. English text submitted as Hindi) are rejected with HTTP 422.
+3. **Input Sanitization & Injection Defense**:
+   - Rejects empty strings, excessive length, control characters, and prompt injection patterns.
+   - String substitution uses safe lambda closures `re.sub(pattern, lambda m: r, text)` to prevent regex backreference corruption.
+4. **Provenance Audit Trail**:
+   - Every modification writes an immutable record to `term_audit_log` detailing `term_id`, `version`, `action`, `changed_by` (reviewer UUID), `old_value_json`, `new_value_json`, and timestamps.
+5. **Admin Rollback**:
+   - Administrators can invoke `POST /api/kg/terms/{term_id}/rollback` specifying `target_version` to immediately restore previous verified states.
 
 ---
 
-## 4. Input Sanitization & Defensive Engineering
+## 4. Rate Limiting, Request Caps & Concurrency
 
-1. **Regex Backreference Injection Defense**:
-   - Standard `re.sub(pattern, replacement, text)` crashes with `re.error: bad escape` or expands corrupted backreferences if replacement strings contain `\1`, `\g<1>`, or backslashes.
-   - All string substitution pipelines utilize safe literal callable closures:
-     ```python
-     re.sub(pattern, lambda m, r=replacement_val: r, text, flags=re.IGNORECASE)
-     ```
-2. **SQL Injection Defense**:
-   - 100% of database interactions utilize parameterized queries (`?` parameter placeholders). No string concatenation is used in SQL statements.
-3. **File Upload Hardening**:
-   - File size ceiling enforced at **15 MB**. Payloads exceeding this limit receive HTTP 413.
-   - File type whitelist: `.txt`, `.md`, `.pdf`, `.docx`, `.json`, `.csv`.
+1. **Rate Limiting**:
+   - Sliding-window rate limiting per IP and per authenticated user to prevent denial-of-service and LLM quota exhaustion.
+2. **Payload Size Caps**:
+   - File uploads capped at 15 MB with extension allow-listing (`pdf`, `docx`, `pptx`, `txt`, `md`).
+   - LLM generation endpoints enforce maximum input character length caps.
+3. **Prompt Injection Hardening**:
+   - Source texts and retrieved context are encapsulated in strict XML/data boundary tags (`<source_text>` ... `</source_text>`) instructing models to treat content strictly as passive data.
 4. **Database Concurrency & WAL Mode**:
-   - SQLite configured with `PRAGMA journal_mode = WAL;`, `PRAGMA busy_timeout = 30000;`, and `PRAGMA foreign_keys = ON;` to eliminate locking collisions under concurrent multi-process access.
+   - SQLite configured with `PRAGMA journal_mode = WAL;`, `PRAGMA busy_timeout = 30000;`, and `PRAGMA foreign_keys = ON;`.

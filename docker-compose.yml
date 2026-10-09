@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  clrag-platform:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: clrag-platform
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=development
+      - PORT=8000
+      - HOST=0.0.0.0
+      - JWT_SECRET=clrag-dev-secret-replace-in-production-2026-minimum-32-chars
+      - CONFIDENCE_THRESHOLD=0.85
+      - LLM_MODE=auto
+      - REVIEW_APPROVALS_REQUIRED=2
+    volumes:
+      - platform_data:/app/backend/data
+      - eval_runs:/app/data/evaluation/runs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  platform_data:
+  eval_runs:

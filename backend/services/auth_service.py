@@ -1,11 +1,12 @@
 from datetime import datetime, timedelta, timezone
-from typing import Optional, Dict, Any
-import bcrypt
-from jose import JWTError, jwt
-from fastapi import HTTPException, status, Depends
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from typing import Any
 
-from backend.config import JWT_SECRET, JWT_ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
+import bcrypt
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from jose import JWTError, jwt
+
+from backend.config import ACCESS_TOKEN_EXPIRE_MINUTES, JWT_ALGORITHM, JWT_SECRET
 from backend.database import get_db
 
 security_bearer = HTTPBearer(auto_error=False)
@@ -24,7 +25,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     except Exception:
         return False
 
-def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta] = None) -> str:
+def create_access_token(data: dict[str, Any], expires_delta: timedelta | None = None) -> str:
     """Creates a cryptographically signed JWT access token."""
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
@@ -32,7 +33,7 @@ def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta]
     encoded_jwt = jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGORITHM)
     return encoded_jwt
 
-def decode_access_token(token: str) -> Dict[str, Any]:
+def decode_access_token(token: str) -> dict[str, Any]:
     """Decodes and validates a signed JWT token."""
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
@@ -40,11 +41,11 @@ def decode_access_token(token: str) -> Dict[str, Any]:
     except JWTError as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Invalid or expired authentication token: {str(e)}",
+            detail=f"Invalid or expired authentication token: {e!s}",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-def get_current_user(credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_bearer)) -> Dict[str, Any]:
+def get_current_user(credentials: HTTPAuthorizationCredentials | None = Depends(security_bearer)) -> dict[str, Any]:
     """
     FastAPI dependency extracting and validating the authenticated user from the Bearer token.
     Raises 401 if missing, invalid, or expired.
@@ -64,10 +65,10 @@ def get_current_user(credentials: Optional[HTTPAuthorizationCredentials] = Depen
             detail="Token payload missing subject identifier.",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT id, name, email, role, preferred_lang, created_at FROM users WHERE id = ?", (user_id,))
+        cursor.execute("SELECT id, tenant_id, name, email, role, preferred_lang, created_at FROM users WHERE id = ?", (user_id,))
         user = cursor.fetchone()
         if not user:
             raise HTTPException(
@@ -75,9 +76,11 @@ def get_current_user(credentials: Optional[HTTPAuthorizationCredentials] = Depen
                 detail="User account associated with this token no longer exists.",
                 headers={"WWW-Authenticate": "Bearer"},
             )
+        # Ensure tenant_id from token or DB is present
+        user["tenant_id"] = payload.get("tenant_id") or user.get("tenant_id", "default_org")
         return user
 
-def get_optional_user(credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_bearer)) -> Optional[Dict[str, Any]]:
+def get_optional_user(credentials: HTTPAuthorizationCredentials | None = Depends(security_bearer)) -> dict[str, Any] | None:
     """Returns authenticated user if token present, or None if anonymous."""
     if not credentials:
         return None
@@ -88,8 +91,11 @@ def get_optional_user(credentials: Optional[HTTPAuthorizationCredentials] = Depe
             return None
         with get_db() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT id, name, email, role, preferred_lang, created_at FROM users WHERE id = ?", (user_id,))
-            return cursor.fetchone()
+            cursor.execute("SELECT id, tenant_id, name, email, role, preferred_lang, created_at FROM users WHERE id = ?", (user_id,))
+            user = cursor.fetchone()
+            if user:
+                user["tenant_id"] = payload.get("tenant_id") or user.get("tenant_id", "default_org")
+            return user
     except Exception:
         return None
 
@@ -98,7 +104,7 @@ def require_role(allowed_roles: list):
     Role-Based Access Control (RBAC) dependency factory.
     Example: Depends(require_role(["ADMIN", "REVIEWER"]))
     """
-    def role_checker(current_user: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
+    def role_checker(current_user: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
         user_role = current_user.get("role", "USER")
         if user_role not in allowed_roles:
             raise HTTPException(

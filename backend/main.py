@@ -1,35 +1,40 @@
-import os
-import uuid
 import logging
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
-from fastapi import FastAPI
+from typing import Any
+
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from backend.config import SUPPORTED_LANGUAGES, DEFAULT_DOMAINS, CONFIDENCE_THRESHOLD
-from backend.database import init_db, get_db, get_utc_now_iso
-from backend.services.kg_service import kg_service
-from backend.services.rag_service import rag_service
-from backend.services.auth_service import hash_password
-
+from backend.config import (
+    CONFIDENCE_THRESHOLD,
+    DEFAULT_DOMAINS,
+    GEMINI_API_KEY,
+    GEMINI_MODEL,
+    LLM_MODE,
+    SUPPORTED_LANGUAGES,
+)
+from backend.database import get_db, init_db, seed_all
 from backend.routers import (
+    adaptive,
     auth,
+    chat,
     documents,
     knowledge_graph,
-    translate,
     review,
-    adaptive,
-    chat,
-    eval as eval_router
+    translate,
 )
+from backend.routers import eval as eval_router
+from backend.services.kg_service import kg_service
 
 logger = logging.getLogger("clrag.main")
 logging.basicConfig(level=logging.INFO)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 1. Clean Database Initialization
+    # 1. Clean Database Initialization (tables and indexes only)
     logger.info("Initializing database tables and indexes...")
     init_db()
 
@@ -37,66 +42,14 @@ async def lifespan(app: FastAPI):
     logger.info("Checking terminology knowledge graph seed...")
     kg_service.seed_database_if_empty()
 
-    # 3. Seed Default Accounts (Admin, Reviewer, User) with secure bcrypt hashes
-    now = get_utc_now_iso()
-    created_space_id = None
-    created_user_id = None
+    # 3. Unified idempotent seed routine for demo accounts, space, and document
+    logger.info("Running unified idempotent seed routine...")
+    seed_all()
 
-    with get_db() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT id FROM users WHERE email = 'admin@clrag.org'")
-        if not cursor.fetchone():
-            admin_id = str(uuid.uuid4())
-            cursor.execute("""
-                INSERT INTO users (id, name, email, password_hash, role, preferred_lang, created_at)
-                VALUES (?, 'Chief Systems Architect', 'admin@clrag.org', ?, 'ADMIN', 'en', ?)
-            """, (admin_id, hash_password("AdminPassword123!"), now))
-
-            reviewer_id = str(uuid.uuid4())
-            cursor.execute("""
-                INSERT INTO users (id, name, email, password_hash, role, preferred_lang, created_at)
-                VALUES (?, 'Domain Terminology Reviewer', 'reviewer@clrag.org', ?, 'REVIEWER', 'en', ?)
-            """, (reviewer_id, hash_password("ReviewerPassword123!"), now))
-
-            user_id = str(uuid.uuid4())
-            cursor.execute("""
-                INSERT INTO users (id, name, email, password_hash, role, preferred_lang, created_at)
-                VALUES (?, 'Research Student', 'user@clrag.org', ?, 'USER', 'en', ?)
-            """, (user_id, hash_password("UserPassword123!"), now))
-
-            # Create default workspace
-            space_id = str(uuid.uuid4())
-            cursor.execute("""
-                INSERT INTO knowledge_spaces (id, user_id, name, description, domain, default_lang, created_at)
-                VALUES (?, ?, 'Cloud & Distributed Systems Architecture', 'Authoritative technical specifications covering fault tolerance, load balancers, and eventual consistency.', 'cloud_computing', 'en', ?)
-            """, (space_id, admin_id, now))
-
-            created_space_id = space_id
-            created_user_id = admin_id
-            logger.info("Default seed accounts (admin, reviewer, user) created.")
-
-    # 4. Seed sample technical document OUTSIDE the database transaction block
-    if created_space_id:
-        try:
-            sample_text = (
-                "Cloud infrastructure requires comprehensive fault tolerance to prevent catastrophic system downtime. "
-                "A robust load balancer dynamically distributes incoming user traffic across container clusters to ensure horizontal scaling. "
-                "In modern distributed systems, microservices communicate through a service mesh while enforcing strict rate limiting. "
-                "To mitigate cascading network partitions, architects implement the circuit breaker pattern alongside eventual consistency models. "
-                "Furthermore, write operations must guarantee idempotency so that consumer retries in a dead-letter queue do not produce corrupt side effects. "
-                "High-velocity cache invalidation ensures that state updates propagate predictably across nodes executing the consensus protocol."
-            )
-            rag_service.ingest_document(
-                space_id=created_space_id,
-                filename="cloud_systems_specification_v2.txt",
-                content=sample_text,
-                file_type="txt",
-                domain="cloud_computing",
-                user_id=created_user_id
-            )
-            logger.info("Sample technical document ingested successfully without nested locks.")
-        except Exception as e:
-            logger.error(f"Sample document ingestion encountered an error, continuing startup: {e}")
+    from backend.config import ENVIRONMENT, JWT_SECRET
+    if ENVIRONMENT != "development":
+        if not JWT_SECRET or JWT_SECRET == "clrag-dev-secret-replace-in-production-2026" or len(JWT_SECRET) < 32:
+            raise RuntimeError("Fatal: Outside development, JWT_SECRET must be configured with at least 32 characters.")
 
     yield
     logger.info("CL-RAG backend shutting down.")
@@ -108,10 +61,12 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS
+# CORS: Restricted to configured origins
+cors_origins_raw = os.getenv("CORS_ORIGINS", "http://localhost:8000,http://127.0.0.1:8000")
+allowed_origins = [o.strip() for o in cors_origins_raw.split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -129,28 +84,34 @@ app.include_router(eval_router.router)
 
 @app.get("/api/health")
 def health_check():
+    api_key = os.getenv("GEMINI_API_KEY", GEMINI_API_KEY)
+    mode_cfg = os.getenv("LLM_MODE", LLM_MODE)
+    is_live = bool(api_key and mode_cfg != "offline")
     return {
         "status": "HEALTHY",
         "service": "CL-RAG Cross-Language Knowledge Transfer Platform",
+        "mode": "live" if is_live else "offline_demo",
+        "engine": f"live:{os.getenv('GEMINI_MODEL', GEMINI_MODEL)}" if is_live else "offline_deterministic",
         "confidence_threshold": CONFIDENCE_THRESHOLD,
         "supported_languages": SUPPORTED_LANGUAGES,
         "domains": DEFAULT_DOMAINS
     }
 
 @app.get("/api/stats")
-def get_system_stats():
+def get_system_stats(current_user: dict[str, Any] = Depends(auth.get_current_user)):
+    tenant_id = current_user.get("tenant_id", "default_org")
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) as count FROM terms")
+        cursor.execute("SELECT COUNT(*) as count FROM terms WHERE tenant_id = ? OR tenant_id = 'default_org'", (tenant_id,))
         term_count = cursor.fetchone()["count"]
 
-        cursor.execute("SELECT COUNT(*) as count FROM documents")
+        cursor.execute("SELECT COUNT(*) as count FROM documents WHERE tenant_id = ?", (tenant_id,))
         doc_count = cursor.fetchone()["count"]
 
-        cursor.execute("SELECT COUNT(*) as count FROM document_chunks")
+        cursor.execute("SELECT COUNT(*) as count FROM document_chunks WHERE tenant_id = ?", (tenant_id,))
         chunk_count = cursor.fetchone()["count"]
 
-        cursor.execute("SELECT COUNT(*) as count FROM review_queue WHERE status = 'PENDING'")
+        cursor.execute("SELECT COUNT(*) as count FROM review_queue WHERE tenant_id = ? AND status = 'PENDING'", (tenant_id,))
         pending_reviews = cursor.fetchone()["count"]
 
         cursor.execute("SELECT COUNT(*) as count FROM term_audit_log WHERE action = 'HUMAN_CORRECTION'")

@@ -1,6 +1,6 @@
 import os
-import secrets
 from pathlib import Path
+
 from dotenv import load_dotenv
 
 # Load environment variables from .env if present
@@ -11,6 +11,8 @@ BACKEND_DIR = Path(__file__).resolve().parent
 DATA_DIR = BACKEND_DIR / "data"
 DATA_DIR.mkdir(exist_ok=True)
 
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
+
 # Dynamic DB Path: supports test database redirection via DATABASE_PATH
 DEFAULT_DB_PATH = str(DATA_DIR / "platform.db")
 DB_PATH = os.getenv("DATABASE_PATH", DEFAULT_DB_PATH)
@@ -19,9 +21,13 @@ def get_current_db_path() -> str:
     """Returns current active DB path (supports runtime test overrides)."""
     return os.getenv("DATABASE_PATH", DB_PATH)
 
-# API Keys (optional; if not set, platform runs in deterministic local/offline simulation mode)
+# API Keys & LLM Engine Configuration
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+LLM_MODE = os.getenv("LLM_MODE", "auto")  # 'live', 'offline', or 'auto'
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "intfloat/multilingual-e5-base")
+
 
 # Confidence Gating Threshold (tau)
 CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD", "0.85"))

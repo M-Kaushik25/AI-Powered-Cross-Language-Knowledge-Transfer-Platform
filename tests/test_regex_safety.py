@@ -1,12 +1,14 @@
-import pytest
 import re
+
+import pytest
+
 from backend.services.multi_agent_service import multi_agent_service
-from backend.services.rag_service import rag_service
+
 
 def test_safe_regex_substitution_patterns():
     """Verify that regex backreferences such as \\1, \\g<1>, and backslashes do not crash or corrupt text."""
     sample_text = "The system connects to primary cluster and secondary node."
-    
+
     # Pathological replacement terms containing backreference syntax
     dangerous_replacements = [
         r"\1_corrupted",
@@ -15,7 +17,7 @@ def test_safe_regex_substitution_patterns():
         r"$\100%_guarantee",
         r"\\\\double_backslash\\",
     ]
-    
+
     for dangerous in dangerous_replacements:
         pattern = r"\bcluster\b"
         # Standard re.sub(pattern, dangerous, sample_text) would fail with re.error: bad escape

@@ -7,7 +7,7 @@ Base URL: `http://localhost:8000/api`
 ## 1. Authentication Router (`/api/auth`)
 
 ### `POST /api/auth/login`
-Authenticates a user and issues a signed JWT Bearer access token.
+Authenticates user and returns JWT Bearer token.
 - **Request Body**:
   ```json
   {
@@ -24,139 +24,173 @@ Authenticates a user and issues a signed JWT Bearer access token.
       "id": "uuid",
       "name": "Domain Terminology Reviewer",
       "email": "reviewer@clrag.org",
-      "role": "REVIEWER"
+      "role": "REVIEWER",
+      "tenant_id": "default_tenant"
     }
   }
   ```
 
 ### `GET /api/auth/me`
-Returns the currently authenticated user's profile.
+Returns currently authenticated user profile.
 - **Headers**: `Authorization: Bearer <token>`
-- **Response** (`200 OK`):
-  ```json
-  {
-    "id": "uuid",
-    "name": "Domain Terminology Reviewer",
-    "email": "reviewer@clrag.org",
-    "role": "REVIEWER",
-    "preferred_lang": "en"
-  }
-  ```
+- **Response** (`200 OK`)
 
 ---
 
 ## 2. Multi-Agent Translation Studio (`/api/translate`)
 
 ### `POST /api/translate`
-Executes the 5-Agent Translation & Verification Pipeline.
+Executes multi-agent translation pipeline with terminology constraint enforcement.
+- **Headers**: `Authorization: Bearer <token>`
 - **Request Body**:
   ```json
   {
     "source_text": "Fault tolerance guarantees high availability in distributed architectures.",
     "target_lang": "hi",
-    "domain": "cloud_computing"
+    "source_lang": "en",
+    "domain": "cloud_computing",
+    "mode": "auto"
   }
   ```
-- **Response** (`200 OK`): Returns `job_id`, `full_translation`, `avg_confidence`, `term_usage_rate`, `pipeline_telemetry`, and per-segment breakdown containing reports from all 5 agents.
+- **Response** (`200 OK`):
+  ```json
+  {
+    "job_id": "uuid",
+    "full_translation": "...",
+    "mode": "live",
+    "avg_confidence": 0.88,
+    "term_usage_rate": 1.0,
+    "segments": [
+      {
+        "segment_id": 0,
+        "source_text": "...",
+        "target_text": "...",
+        "engine": "live:gemini-1.5-flash",
+        "weighted_confidence": 0.88,
+        "verifier_score": 1.0,
+        "critic_score": 0.85,
+        "status": "AUTOMATICALLY_VERIFIED"
+      }
+    ]
+  }
+  ```
 
 ---
 
 ## 3. Living Terminology Knowledge Graph (`/api/kg`)
 
 ### `GET /api/kg/terms`
-Lists all approved terms in the Living Knowledge Graph.
+Lists approved terms in the Living Knowledge Graph for the caller's tenant.
+- **Headers**: `Authorization: Bearer <token>`
 - **Query Params**: `domain` (optional), `search` (optional)
 
 ### `POST /api/kg/terms`
-Adds or updates a verified term node (Requires `ADMIN` or `REVIEWER` role).
+Proposes a new term or translation (Requires `REVIEWER` or `ADMIN`).
 - **Headers**: `Authorization: Bearer <token>`
 - **Request Body**:
   ```json
   {
-    "source_term": "distributed transactions",
+    "source_term": "fault tolerance",
     "domain": "cloud_computing",
     "target_lang": "hi",
-    "translation": "वितरित लेनदेन",
-    "definition": "Transactions spanning multiple network nodes",
-    "reviewer_notes": "Expert approved"
+    "translation": "दोष सहनशीलता",
+    "definition": "Ability of a system to continue operating properly"
   }
   ```
+- **Response** (`201 Created`): Returns term object with status `PROPOSED`.
 
-### `POST /api/kg/candidates`
-Stages an unverified candidate term proposed by standard users (`USER` role).
+### `POST /api/kg/terms/{term_id}/approve`
+Records an approval in the 2-reviewer consensus gate (Requires `REVIEWER` or `ADMIN`). Proposer cannot approve own submission.
 - **Headers**: `Authorization: Bearer <token>`
-- **Request Body**:
-  ```json
-  {
-    "source_term": "edge runtime",
-    "domain": "cloud_computing",
-    "target_lang": "hi",
-    "proposed_translation": "एज रनटाईम"
-  }
-  ```
+- **Response** (`200 OK`): Returns approval count ($n$ of $N$) and updated term status (`APPROVED` once consensus reached).
 
 ### `POST /api/kg/terms/{term_id}/rollback`
-Reverts a term to a previous verified version (Requires `ADMIN` role).
+Rolls back term to a prior version (Requires `ADMIN`).
 - **Headers**: `Authorization: Bearer <token>`
-- **Request Body**:
-  ```json
-  {
-    "target_version": 1,
-    "reason": "Anti-poisoning rollback"
-  }
-  ```
-
-### `POST /api/kg/extract`
-Extracts candidate terms, acronyms, and linguistic noun phrases using C-Value scoring.
+- **Request Body**: `{"target_version": 1, "reason": "Restoration"}`
 
 ### `GET /api/kg/graph`
-Exports the complete Knowledge Graph including concept nodes, term nodes, translation nodes, and inter-term relationships (`SUBCLASS_OF`, `CONTEXT_OF`).
+Exports graph topology including nodes, translations, and relational edges (`synonym`, `broader`, `narrower`, `related`, `abbreviation_of`).
+- **Headers**: `Authorization: Bearer <token>`
 
 ---
 
 ## 4. Confidence-Gated Review Queue (`/api/review`)
 
 ### `GET /api/review`
-Lists review queue items filtered by status (`PENDING`, `RESOLVED`, `DISMISSED`, `ALL`).
+Lists review queue segments filtered by status (`PENDING`, `RESOLVED`, `DISMISSED`).
+- **Headers**: `Authorization: Bearer <token>`
 
 ### `POST /api/review/{item_id}/correct`
-Applies an expert human correction, updates the Knowledge Graph, and increments version (Requires `ADMIN` or `REVIEWER` role).
-
-### `POST /api/review/{item_id}/dismiss`
-Dismisses a flagged item without altering the Knowledge Graph (Requires `ADMIN` or `REVIEWER` role).
+Applies a human correction and propagates term to the Living Knowledge Graph.
+- **Headers**: `Authorization: Bearer <token>` (Requires `REVIEWER` or `ADMIN`)
+- **Request Body**:
+  ```json
+  {
+    "corrected_translation": "...",
+    "reviewer_notes": "Expert approved"
+  }
+  ```
 
 ---
 
 ## 5. Expertise-Adaptive Summarization (`/api/adaptive`)
 
 ### `POST /api/adaptive`
-Generates dual-level Novice vs. Expert adaptations with empirical Flesch Reading Ease and Complexity Index metrics.
+Generates expertise-adapted summary across 3 levels (`novice`, `intermediate`, `expert`).
+- **Headers**: `Authorization: Bearer <token>`
+- **Request Body**:
+  ```json
+  {
+    "text": "...",
+    "target_level": "expert",
+    "domain": "cloud_computing"
+  }
+  ```
+- **Response** (`200 OK`): Returns adapted text, faithfulness verification report, and empirical readability scores.
 
 ---
 
 ## 6. Cross-Lingual Knowledge Spaces & RAG (`/api/documents`, `/api/chat`)
 
 ### `POST /api/documents/spaces`
-Creates a knowledge space.
-
-### `POST /api/documents/ingest-text`
-Ingests plain text document with automatic chunking and multilingual concept indexing.
+Creates a scoped knowledge space.
+- **Headers**: `Authorization: Bearer <token>`
 
 ### `POST /api/documents/upload`
-Uploads a document file (size limit: 15 MB).
+Uploads and parses a document (`.pdf`, `.docx`, `.pptx`, `.txt`, `.md`) preserving page and slide offsets.
+- **Headers**: `Authorization: Bearer <token>`
 
 ### `POST /api/chat`
-Answers cross-lingual questions using grounded concept retrieval with empirical confidence scoring.
+Answers cross-lingual questions using dense multilingual retrieval (`multilingual-e5-base`), KG query expansion, and grounded evidence citations.
+- **Headers**: `Authorization: Bearer <token>`
+- **Request Body**:
+  ```json
+  {
+    "space_id": "uuid",
+    "query": "दोष सहनशीलता क्या है?",
+    "target_lang": "hi"
+  }
+  ```
+- **Response** (`200 OK`): Returns answer, supporting citations with page numbers and exact text spans, and support confidence.
 
 ---
 
 ## 7. Evaluation & Ablation Hub (`/api/eval`)
 
 ### `GET /api/eval/latest`
-Returns the latest stored empirical benchmark results.
+Returns the latest stored empirical benchmark results from `data/evaluation/runs/`.
+- **Headers**: `Authorization: Bearer <token>`
 
 ### `POST /api/eval/run`
-Executes an isolated, non-destructive 3-round self-evolution ablation run against a temporary database.
-
-### `POST /api/eval/baselines`
-Runs benchmark comparisons across Vanilla MT, Static Dictionary MT, Monolingual RAG, and Proposed CL-RAG.
+Executes an empirical benchmark on an isolated temporary database (Requires `ADMIN`).
+- **Headers**: `Authorization: Bearer <token>`
+- **Request Body**:
+  ```json
+  {
+    "domain": "cloud_computing",
+    "target_lang": "hi",
+    "rounds": 3
+  }
+  ```
+- **Response** (`200 OK`): Returns multi-round results across B1, B2, Proposed, and ablations, persisting run outputs to disk.

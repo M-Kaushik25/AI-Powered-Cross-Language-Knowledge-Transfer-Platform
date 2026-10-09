@@ -1,27 +1,72 @@
 from datetime import datetime
-from fastapi import APIRouter, HTTPException, Query, Depends
+from typing import Any
+
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from typing import Optional, Dict, Any
+
 from backend.database import get_db
-from backend.services.kg_service import kg_service
 from backend.services.auth_service import require_role
+from backend.services.kg_service import kg_service
 
 router = APIRouter(prefix="/api/review", tags=["Review Queue"])
 
 class ReviewActionRequest(BaseModel):
     corrected_translation: str
-    reviewer_comment: Optional[str] = "Approved and updated during expert review"
+    reviewer_comment: str | None = "Approved and updated during expert review"
 
 @router.get("")
-def list_review_items(status: Optional[str] = "PENDING"):
+def list_review_items(
+    status: str | None = "PENDING",
+    current_user: dict[str, Any] = Depends(require_role(["ADMIN", "REVIEWER"]))
+):
+    tenant_id = current_user.get("tenant_id", "default_org")
     with get_db() as conn:
         cursor = conn.cursor()
         if status and status != "ALL":
-            cursor.execute("SELECT * FROM review_queue WHERE status = ? ORDER BY created_at DESC", (status,))
+            cursor.execute("""
+                SELECT * FROM review_queue
+                WHERE status = ? AND (tenant_id = ? OR tenant_id = 'default_org')
+                ORDER BY created_at DESC
+            """, (status, tenant_id))
         else:
-            cursor.execute("SELECT * FROM review_queue ORDER BY created_at DESC")
-        items = cursor.fetchall()
-        
+            cursor.execute("""
+                SELECT * FROM review_queue
+                WHERE tenant_id = ? OR tenant_id = 'default_org'
+                ORDER BY created_at DESC
+            """, (tenant_id,))
+        raw_items = cursor.fetchall()
+        items = []
+        for r in raw_items:
+            item_dict = dict(r)
+            # Fetch associated terms
+            cursor.execute("""
+                SELECT term_id, term_text, term_status
+                FROM review_queue_terms
+                WHERE review_item_id = ?
+            """, (item_dict["id"],))
+            terms = [dict(t) for t in cursor.fetchall()]
+            if not terms and item_dict.get("term_text"):
+                terms = [{
+                    "term_id": item_dict.get("term_id"),
+                    "term_text": item_dict.get("term_text"),
+                    "term_status": "FLAGGED_TERM"
+                }]
+            item_dict["terms"] = terms
+
+            # Fetch prior approvals if associated with a term_id
+            approvals = []
+            if item_dict.get("term_id"):
+                cursor.execute("""
+                    SELECT reviewer_id, reviewer_role, decision, created_at
+                    FROM term_approvals
+                    WHERE term_id = ?
+                """, (item_dict["term_id"],))
+                approvals = [dict(a) for a in cursor.fetchall()]
+            item_dict["approvals"] = approvals
+            item_dict["approvals_count"] = len(approvals)
+            item_dict["required_approvals"] = 2
+            items.append(item_dict)
+
     return {
         "count": len(items),
         "status_filter": status,
@@ -32,7 +77,7 @@ def list_review_items(status: Optional[str] = "PENDING"):
 def correct_and_update_kg(
     item_id: str,
     req: ReviewActionRequest,
-    current_user: Dict[str, Any] = Depends(require_role(["ADMIN", "REVIEWER"]))
+    current_user: dict[str, Any] = Depends(require_role(["ADMIN", "REVIEWER"]))
 ):
     """
     Submits a human correction for a flagged low-confidence segment/term:
@@ -40,24 +85,31 @@ def correct_and_update_kg(
     2. Increments version and logs provenance with authenticated reviewer identity.
     3. Resolves this queue entry.
     """
+    tenant_id = current_user.get("tenant_id", "default_org")
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM review_queue WHERE id = ?", (item_id,))
+        cursor.execute("SELECT * FROM review_queue WHERE id = ? AND (tenant_id = ? OR tenant_id = 'default_org')", (item_id, tenant_id))
         item = cursor.fetchone()
         if not item:
             raise HTTPException(status_code=404, detail="Review item not found")
 
     # Apply correction to Knowledge Graph with authenticated reviewer metadata
-    kg_res = kg_service.apply_human_correction(
-        source_term=item["term_text"],
-        target_lang=item["target_lang"],
-        corrected_translation=req.corrected_translation,
-        domain=item["domain"],
-        reviewer_notes=req.reviewer_comment or "Self-updating correction from Human Review Hub",
-        term_id=item["term_id"],
-        reviewer_id=current_user["id"],
-        reviewer_role=current_user["role"]
-    )
+    try:
+        kg_res = kg_service.apply_human_correction(
+            source_term=item["term_text"],
+            target_lang=item["target_lang"],
+            corrected_translation=req.corrected_translation,
+            domain=item["domain"],
+            reviewer_notes=req.reviewer_comment or "Self-updating correction from Human Review Hub",
+            term_id=item["term_id"],
+            reviewer_id=current_user["id"],
+            reviewer_role=current_user["role"]
+        )
+    except ValueError as e:
+        err_msg = str(e)
+        if "Validation failed" in err_msg:
+            raise HTTPException(status_code=422, detail=err_msg)
+        raise HTTPException(status_code=400, detail=err_msg)
 
     now = datetime.utcnow().isoformat()
     with get_db() as conn:
@@ -80,11 +132,16 @@ def correct_and_update_kg(
 @router.post("/{item_id}/dismiss")
 def dismiss_review_item(
     item_id: str,
-    current_user: Dict[str, Any] = Depends(require_role(["ADMIN", "REVIEWER"]))
+    current_user: dict[str, Any] = Depends(require_role(["ADMIN", "REVIEWER"]))
 ):
+    tenant_id = current_user.get("tenant_id", "default_org")
     now = datetime.utcnow().isoformat()
     with get_db() as conn:
         cursor = conn.cursor()
+        cursor.execute("SELECT id FROM review_queue WHERE id = ? AND (tenant_id = ? OR tenant_id = 'default_org')", (item_id, tenant_id))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Review item not found")
+
         cursor.execute("""
             UPDATE review_queue
             SET status = 'DISMISSED',

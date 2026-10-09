@@ -1,21 +1,45 @@
-from fastapi import APIRouter
+
+from typing import Any
+
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
-from typing import Optional
+
+from backend.services.auth_service import get_current_user, require_role
 from backend.services.eval_service import eval_service
 
 router = APIRouter(prefix="/api/eval", tags=["Evaluation & Ablation Hub"])
 
 class RunAblationRequest(BaseModel):
-    domain: Optional[str] = "cloud_computing"
+    domain: str | None = "cloud_computing"
+    target_lang: str | None = "hi"
+    sample_size: int | None = None
 
 @router.post("/run")
-def run_ablation(req: RunAblationRequest):
-    return eval_service.run_comprehensive_ablation(domain=req.domain)
+def run_ablation(
+    req: RunAblationRequest,
+    current_user: dict[str, Any] = Depends(require_role(["ADMIN"]))
+):
+    return eval_service.run_comparative_evaluation(
+        domain=req.domain or "cloud_computing",
+        target_lang=req.target_lang or "hi",
+        sample_size=req.sample_size,
+    )
 
 @router.get("/latest")
-def get_latest_results():
+def get_latest_results(
+    current_user: dict[str, Any] = Depends(get_current_user)
+):
     return eval_service.get_latest_eval_run()
 
+@router.get("/runs")
+def list_eval_runs(
+    current_user: dict[str, Any] = Depends(get_current_user)
+):
+    return eval_service.list_eval_runs()
+
 @router.post("/baselines")
-def compare_baselines(req: RunAblationRequest):
+def compare_baselines(
+    req: RunAblationRequest,
+    current_user: dict[str, Any] = Depends(require_role(["ADMIN"]))
+):
     return eval_service.run_baselines_comparison(domain=req.domain)

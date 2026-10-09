@@ -17,6 +17,10 @@ htmlcov/
 # Local databases (re-created automatically on startup)
 backend/data/*.db
 
+# Evaluation runs artifacts (dynamic)
+data/evaluation/runs/*
+!data/evaluation/runs/.gitkeep
+
 # Secrets & Environment
 .env
 .env.local
