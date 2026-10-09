@@ -33,7 +33,8 @@ jobs:
 
     - name: Run test suite with pytest and coverage
       env:
+        PYTHONPATH: .
         ENVIRONMENT: development
         JWT_SECRET: clrag-dev-secret-replace-in-production-2026-minimum-32-chars
       run: |
-        pytest --cov=backend/services --cov-report=term-missing tests/
+        python -m pytest -v --cov=backend/services --cov-report=term-missing tests/
