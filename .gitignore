@@ -31,3 +31,8 @@ data/evaluation/runs/*
 Thumbs.db
 .vscode/
 .idea/
+
+# Gemini Codebase Exports & Archives
+*.zip
+gemini_codebase_bundle.md
+
