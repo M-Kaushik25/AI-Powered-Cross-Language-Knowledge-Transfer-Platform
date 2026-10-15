@@ -1,9 +1,11 @@
+import os
 import uuid
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, EmailStr
 
+from backend.config import ENVIRONMENT
 from backend.database import get_db, get_utc_now_iso
 from backend.services.auth_service import (
     create_access_token,
@@ -29,7 +31,11 @@ class LoginRequest(BaseModel):
 @router.post("/register", status_code=status.HTTP_201_CREATED)
 def register(req: RegisterRequest):
     now = get_utc_now_iso()
-    assigned_role = req.role if req.role in ["USER", "REVIEWER", "ADMIN"] else "USER"
+    env = os.getenv("ENVIRONMENT", ENVIRONMENT).lower()
+    if env != "development":
+        assigned_role = "USER"
+    else:
+        assigned_role = req.role if req.role in ["USER", "REVIEWER", "ADMIN"] else "USER"
     assigned_tenant = req.tenant_id.strip() if req.tenant_id and req.tenant_id.strip() else "default_org"
 
     with get_db() as conn:

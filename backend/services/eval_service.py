@@ -22,7 +22,9 @@ import logging
 import os
 import shutil
 import tempfile
+import time
 import uuid
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -33,7 +35,7 @@ from sklearn.metrics import roc_auc_score
 
 from backend.config import BASE_DIR, get_current_db_path
 from backend.database import get_db, get_utc_now_iso, init_db
-from backend.services.kg_service import kg_service
+from backend.services.kg_service import SEED_TERMS, kg_service
 from backend.services.multi_agent_service import multi_agent_service
 
 logger = logging.getLogger("clrag.eval")
@@ -69,6 +71,7 @@ class EvaluationService:
         self.benchmark_dir = BASE_DIR / "data" / "evaluation"
         self.runs_dir = self.benchmark_dir / "runs"
         self.runs_dir.mkdir(parents=True, exist_ok=True)
+        self._active_gold_terms: dict[str, str] = {}
 
     def _load_gold_dataset(self, domain: str = "cloud_computing") -> list[dict[str, Any]]:
         """Loads domain sentences and verified gold references from data/evaluation/."""
@@ -96,11 +99,63 @@ class EvaluationService:
 
         return []
 
+    def _build_gold_term_map(self, items: list[dict[str, Any]], target_lang: str) -> dict[str, str]:
+        """
+        Snapshots an immutable gold reference term dictionary before cold-start simulation.
+        Sources priority:
+        1. Item-level 'term_translations' in the benchmark JSON
+        2. SEED_TERMS from kg_service
+        3. Initial unmutated SQLite terms table
+        """
+        gold_map: dict[str, str] = {}
+
+        # 1. Benchmark items term translations
+        for item in items:
+            tt = item.get("term_translations", {})
+            if isinstance(tt, dict):
+                for term, trans in tt.items():
+                    clean_t = term.lower().strip()
+                    if isinstance(trans, dict) and target_lang in trans:
+                        gold_map[clean_t] = trans[target_lang]
+                    elif isinstance(trans, str):
+                        gold_map[clean_t] = trans
+
+        # 2. SEED_TERMS
+        for st in SEED_TERMS:
+            st_term = st.get("source_term", "").lower().strip()
+            tr = st.get("translations", {})
+            if st_term and target_lang in tr and st_term not in gold_map:
+                gold_map[st_term] = tr[target_lang]
+
+        # 3. Unmutated SQLite database terms table
+        try:
+            with get_db() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT source_term, translations_json FROM terms")
+                for row in cursor.fetchall():
+                    st_term = row["source_term"].lower().strip()
+                    if row["translations_json"] and st_term not in gold_map:
+                        try:
+                            tr = json.loads(row["translations_json"])
+                            if target_lang in tr:
+                                gold_map[st_term] = tr[target_lang]
+                        except Exception:
+                            pass
+        except Exception as e:
+            logger.warning(f"Failed to query SQLite terms for gold map: {e}")
+
+        self._active_gold_terms = gold_map
+        return gold_map
+
     def _get_gold_term_translation(self, source_term: str, target_lang: str) -> str | None:
-        """Retrieves verified translation for a term from database or gold catalog."""
+        """Retrieves verified translation for a term from immutable snapshot or database."""
+        clean_term = source_term.lower().strip()
+        if hasattr(self, "_active_gold_terms") and self._active_gold_terms and clean_term in self._active_gold_terms:
+            return self._active_gold_terms[clean_term]
+
         with get_db() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT translations_json FROM terms WHERE source_term = ?", (source_term.lower().strip(),))
+            cursor.execute("SELECT translations_json FROM terms WHERE source_term = ?", (clean_term,))
             row = cursor.fetchone()
             if row and row["translations_json"]:
                 try:
@@ -116,7 +171,8 @@ class EvaluationService:
         domain: str = "cloud_computing",
         target_lang: str = "hi",
         sample_size: int | None = None,
-        reviewer_error_rate: float = 0.05
+        reviewer_error_rate: float = 0.05,
+        mode: str = "offline",
     ) -> dict[str, Any]:
         """
         Runs empirical comparative evaluation across:
@@ -146,6 +202,9 @@ class EvaluationService:
         if not items:
             raise ValueError(f"No gold evaluation items found for domain '{domain}'")
 
+        # Build immutable gold term mapping BEFORE cold start simulation
+        self._build_gold_term_map(items, target_lang)
+
         try:
             # Clone active database to isolated temporary database
             if os.path.exists(original_db):
@@ -163,24 +222,24 @@ class EvaluationService:
             all_segment_records = []
 
             # Condition B1: Generic MT (Zero Constraints)
-            b1_res, b1_segs = self._run_condition_b1(items, target_lang, domain)
+            b1_res, b1_segs = self._run_condition_b1(items, target_lang, domain, mode=mode)
             condition_results["B1_generic_mt"] = b1_res
             all_segment_records.extend(b1_segs)
 
             # Condition B2: Static Glossary (Static terms, no self-evolution)
-            b2_res, b2_segs = self._run_condition_b2(items, target_lang, domain)
+            b2_res, b2_segs = self._run_condition_b2(items, target_lang, domain, mode=mode)
             condition_results["B2_static_glossary"] = b2_res
             all_segment_records.extend(b2_segs)
 
             # Condition P: Proposed Self-Updating Pipeline (Multi-round evolution)
             p_res, p_segs, rounds_data = self._run_condition_proposed(
-                items, target_lang, domain, reviewer_error_rate=reviewer_error_rate
+                items, target_lang, domain, reviewer_error_rate=reviewer_error_rate, mode=mode
             )
             condition_results["P_proposed_pipeline"] = p_res
             all_segment_records.extend(p_segs)
 
             # Condition Ablation: No Unknown Detection
-            a1_res, a1_segs = self._run_condition_ablation_no_unknown(items, target_lang, domain)
+            a1_res, a1_segs = self._run_condition_ablation_no_unknown(items, target_lang, domain, mode=mode)
             condition_results["Ablation_no_unknown_detection"] = a1_res
             all_segment_records.extend(a1_segs)
 
@@ -254,7 +313,8 @@ class EvaluationService:
         self,
         items: list[dict[str, Any]],
         target_lang: str,
-        domain: str
+        domain: str,
+        mode: str = "offline",
     ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
         """B1 Generic MT: Unconstrained translation with zero constraints."""
         hypotheses = []
@@ -262,6 +322,7 @@ class EvaluationService:
         confidences = []
         accuracies = []
         segments_log = []
+        latencies = []
         terms_hit = 0
         terms_total = 0
 
@@ -269,8 +330,25 @@ class EvaluationService:
             src = item.get("source_en", "")
             gold_ref = item.get("gold_translations", {}).get(target_lang, src)
 
-            # Run without constraints
-            out = multi_agent_service._deterministic_translate(src, constraints=[], source_lang="en", target_lang=target_lang)
+            t0 = time.perf_counter()
+            if mode == "live":
+                t_res = asyncio.run(multi_agent_service._run_translator_agent(
+                    segment=src,
+                    constraints=[],
+                    source_lang="en",
+                    target_lang=target_lang,
+                    domain=domain,
+                    mode=mode
+                ))
+                out = t_res["translation"]
+                engine = t_res["engine"]
+                seg_mode = t_res["mode"]
+            else:
+                out = multi_agent_service._deterministic_translate(src, constraints=[], source_lang="en", target_lang=target_lang)
+                engine = "b1_unconstrained"
+                seg_mode = "offline"
+            latencies.append(time.perf_counter() - t0)
+
             hypotheses.append(out)
             references.append(gold_ref)
             confidences.append(0.50)
@@ -294,18 +372,19 @@ class EvaluationService:
                 "hypothesis": out,
                 "reference": gold_ref,
                 "confidence": 0.50,
-                "engine": "b1_unconstrained",
-                "mode": "offline",
+                "engine": engine,
+                "mode": seg_mode,
                 "queued": False
             })
 
-        return self._compute_metrics(hypotheses, references, confidences, accuracies, terms_hit, terms_total, queued_count=0), segments_log
+        return self._compute_metrics(hypotheses, references, confidences, accuracies, terms_hit, terms_total, queued_count=0, latencies=latencies), segments_log
 
     def _run_condition_b2(
         self,
         items: list[dict[str, Any]],
         target_lang: str,
-        domain: str
+        domain: str,
+        mode: str = "offline",
     ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
         """B2 Static Glossary: Static termbase injected, no self-evolution."""
         hypotheses = []
@@ -313,6 +392,7 @@ class EvaluationService:
         confidences = []
         accuracies = []
         segments_log = []
+        latencies = []
         terms_hit = 0
         terms_total = 0
 
@@ -326,7 +406,25 @@ class EvaluationService:
                 if gold_t:
                     constraints.append({"source_term": t, "target_term": gold_t})
 
-            out = multi_agent_service._deterministic_translate(src, constraints=constraints, source_lang="en", target_lang=target_lang)
+            t0 = time.perf_counter()
+            if mode == "live":
+                t_res = asyncio.run(multi_agent_service._run_translator_agent(
+                    segment=src,
+                    constraints=constraints,
+                    source_lang="en",
+                    target_lang=target_lang,
+                    domain=domain,
+                    mode=mode
+                ))
+                out = t_res["translation"]
+                engine = t_res["engine"]
+                seg_mode = t_res["mode"]
+            else:
+                out = multi_agent_service._deterministic_translate(src, constraints=constraints, source_lang="en", target_lang=target_lang)
+                engine = "b2_static_glossary"
+                seg_mode = "offline"
+            latencies.append(time.perf_counter() - t0)
+
             hypotheses.append(out)
             references.append(gold_ref)
             confidences.append(0.75)
@@ -349,19 +447,20 @@ class EvaluationService:
                 "hypothesis": out,
                 "reference": gold_ref,
                 "confidence": 0.75,
-                "engine": "b2_static_glossary",
-                "mode": "offline",
+                "engine": engine,
+                "mode": seg_mode,
                 "queued": False
             })
 
-        return self._compute_metrics(hypotheses, references, confidences, accuracies, terms_hit, terms_total, queued_count=0), segments_log
+        return self._compute_metrics(hypotheses, references, confidences, accuracies, terms_hit, terms_total, queued_count=0, latencies=latencies), segments_log
 
     def _run_condition_proposed(
         self,
         items: list[dict[str, Any]],
         target_lang: str,
         domain: str,
-        reviewer_error_rate: float = 0.05
+        reviewer_error_rate: float = 0.05,
+        mode: str = "offline",
     ) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
         """P Proposed: 3-round self-evolution with gating and 2-reviewer consensus loop."""
         rounds_data = []
@@ -370,21 +469,35 @@ class EvaluationService:
         # Round 1: Cold start (strip target coverage for terms in benchmark items)
         self._simulate_cold_start(items, target_lang)
         kg_service.invalidate_cache()
-        r1_metrics, r1_segs, r1_queued = self._eval_pipeline_round(items, target_lang, domain, "Round 1 (Cold Start)")
+        r1_metrics, r1_segs, r1_queued = self._eval_pipeline_round(
+            items, target_lang, domain, "Round 1 (Cold Start)", mode=mode
+        )
         rounds_data.append(r1_metrics)
         all_segs.extend(r1_segs)
 
-        # Apply simulated human review with error rate on routed items only
-        self._apply_human_corrections_to_queued(r1_queued, target_lang, domain, error_rate=reviewer_error_rate)
+        # Between Round 1 and Round 2: Batch 1 High-Priority Review (top 55% of unique queued terms)
+        self._apply_human_corrections_to_queued(
+            r1_queued, target_lang, domain, error_rate=reviewer_error_rate, max_fraction=0.55
+        )
         kg_service.invalidate_cache()
 
-        # Round 2: Post-Review Evolution
-        r2_metrics, r2_segs, r2_queued = self._eval_pipeline_round(items, target_lang, domain, "Round 2 (Post-Correction)")
+        # Round 2: Post-Batch-1 Evolution
+        r2_metrics, r2_segs, r2_queued = self._eval_pipeline_round(
+            items, target_lang, domain, "Round 2 (Post-Correction)", mode=mode
+        )
         rounds_data.append(r2_metrics)
         all_segs.extend(r2_segs)
 
-        # Final Round 3: Convergence
-        r3_metrics, r3_segs, _ = self._eval_pipeline_round(items, target_lang, domain, "Round 3 (Converged Living KG)")
+        # Between Round 2 and Round 3: Batch 2 Residual Review on remaining items from Round 2
+        self._apply_human_corrections_to_queued(
+            r2_queued, target_lang, domain, error_rate=reviewer_error_rate, max_fraction=1.0
+        )
+        kg_service.invalidate_cache()
+
+        # Final Round 3: Converged Living KG
+        r3_metrics, r3_segs, _ = self._eval_pipeline_round(
+            items, target_lang, domain, "Round 3 (Converged Living KG)", mode=mode
+        )
         rounds_data.append(r3_metrics)
         all_segs.extend(r3_segs)
 
@@ -394,10 +507,13 @@ class EvaluationService:
         self,
         items: list[dict[str, Any]],
         target_lang: str,
-        domain: str
+        domain: str,
+        mode: str = "offline",
     ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
         """Ablation: No unknown-term detection (uncovered terms ignored)."""
-        metrics, segs, _ = self._eval_pipeline_round(items, target_lang, domain, "Ablation (No Unknown Detection)")
+        metrics, segs, _ = self._eval_pipeline_round(
+            items, target_lang, domain, "Ablation (No Unknown Detection)", mode=mode
+        )
         return metrics, segs
 
     def _eval_pipeline_round(
@@ -405,7 +521,8 @@ class EvaluationService:
         items: list[dict[str, Any]],
         target_lang: str,
         domain: str,
-        round_name: str
+        round_name: str,
+        mode: str = "offline",
     ) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
         hypotheses = []
         references = []
@@ -413,6 +530,7 @@ class EvaluationService:
         accuracies = []
         segments_log = []
         queued_items = []
+        latencies = []
         terms_hit = 0
         terms_total = 0
         queued_count = 0
@@ -421,12 +539,14 @@ class EvaluationService:
             src = item.get("source_en", "")
             gold_ref = item.get("gold_translations", {}).get(target_lang, src)
 
+            t0 = time.perf_counter()
             res = asyncio.run(multi_agent_service.translate_document(
                 source_text=src,
                 target_lang=target_lang,
                 domain=domain,
-                mode="offline"
+                mode=mode
             ))
+            latencies.append(time.perf_counter() - t0)
 
             full_trans = res["full_translation"]
             hypotheses.append(full_trans)
@@ -462,7 +582,7 @@ class EvaluationService:
             })
 
         metrics = self._compute_metrics(
-            hypotheses, references, confidences, accuracies, terms_hit, terms_total, queued_count
+            hypotheses, references, confidences, accuracies, terms_hit, terms_total, queued_count, latencies=latencies
         )
         metrics["round_name"] = round_name
         return metrics, segments_log, queued_items
@@ -475,9 +595,10 @@ class EvaluationService:
         accuracies: list[int],
         terms_hit: int,
         terms_total: int,
-        queued_count: int
+        queued_count: int,
+        latencies: list[float] | None = None,
     ) -> dict[str, Any]:
-        """Empirically computes TSR, BLEU, chrF++, Review Volume, AUROC, and ECE."""
+        """Empirically computes TSR, BLEU, chrF++, Review Volume, AUROC, ECE, and latency percentiles."""
         n = max(len(hypotheses), 1)
         tsr = round((terms_hit / max(terms_total, 1)) * 100, 2)
         review_vol = round((queued_count / n) * 100, 2)
@@ -506,6 +627,9 @@ class EvaluationService:
 
         ece = compute_ece(confidences, accuracies)
 
+        latency_p50 = round(float(np.percentile(latencies, 50)), 4) if latencies else 0.0
+        latency_p95 = round(float(np.percentile(latencies, 95)), 4) if latencies else 0.0
+
         return {
             "tsr": tsr,
             "tsr_percentage": tsr,
@@ -517,6 +641,8 @@ class EvaluationService:
             "avg_confidence": round(float(np.mean(confidences)), 4) if confidences else 0.0,
             "auroc": auroc,
             "ece": ece,
+            "latency_p50": latency_p50,
+            "latency_p95": latency_p95,
             "total_segments": n,
             "queued_segments": queued_count,
             "terms_evaluated": terms_total,
@@ -545,27 +671,35 @@ class EvaluationService:
         queued: list[dict[str, Any]],
         target_lang: str,
         domain: str,
-        error_rate: float = 0.05
+        error_rate: float = 0.05,
+        max_fraction: float = 1.0,
     ):
-        """Applies 2-reviewer consensus approval to queued terms with simulated error rate."""
+        """Applies 2-reviewer consensus approval to queued terms with simulated error rate and prioritized batch size."""
+        term_counts: Counter[str] = Counter()
         for q_entry in queued:
-            item = q_entry["item"]
+            item = q_entry.get("item", {})
             for term in item.get("terms", []):
-                # Apply simulated reviewer error
-                if np.random.rand() < error_rate:
-                    continue  # Reviewer skips or makes mistake
+                term_counts[term] += 1
 
-                # Propose and approve through real 2-reviewer workflow
-                gold_target = item.get("gold_translations", {}).get(target_lang)
-                if gold_target:
-                    # Extract single term translation or use verified term
-                    kg_service.apply_human_correction(
-                        source_term=term,
-                        target_lang=target_lang,
-                        corrected_translation=gold_target[:40],
-                        domain=domain,
-                        reviewer_notes="Empirical benchmark review consensus"
-                    )
+        sorted_terms = [t for t, _ in term_counts.most_common()]
+        num_to_review = int(np.ceil(len(sorted_terms) * max_fraction)) if sorted_terms else 0
+        terms_to_review = sorted_terms[:num_to_review]
+
+        for term in terms_to_review:
+            # Apply simulated reviewer error
+            if np.random.rand() < error_rate:
+                continue  # Reviewer skips or makes mistake
+
+            # Look up true gold term translation (never slice sentence prefix!)
+            gold_term = self._get_gold_term_translation(term, target_lang)
+            if gold_term:
+                kg_service.apply_human_correction(
+                    source_term=term,
+                    target_lang=target_lang,
+                    corrected_translation=gold_term,
+                    domain=domain,
+                    reviewer_notes="Empirical benchmark review consensus"
+                )
 
     def run_comprehensive_ablation(self, domain: str = "cloud_computing", target_lang: str = "hi") -> dict[str, Any]:
         """Wrapper for API backward compatibility."""

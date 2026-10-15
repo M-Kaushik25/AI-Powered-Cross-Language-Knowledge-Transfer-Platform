@@ -44,3 +44,18 @@ async def translate_text(
             status_code=502,
             detail=f"LLM provider failure in live mode: {e}"
         )
+
+
+@router.post("/jobs/{job_id}/refresh")
+async def refresh_job_segments(
+    job_id: str,
+    current_user: dict[str, Any] = Depends(get_current_user)
+):
+    """Re-translates stale segments for a job where needs_refresh = 1."""
+    refreshed = await multi_agent_service.refresh_stale_segments(job_id=job_id)
+    return {
+        "job_id": job_id,
+        "refreshed_count": len(refreshed),
+        "segments": refreshed
+    }
+

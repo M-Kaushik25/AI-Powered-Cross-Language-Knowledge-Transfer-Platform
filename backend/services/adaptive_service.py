@@ -2,8 +2,6 @@ import logging
 import re
 from typing import Any
 
-import httpx
-
 from backend.config import GEMINI_API_KEY, SUPPORTED_LANGUAGES
 from backend.services.kg_service import kg_service
 from backend.services.multi_agent_service import sanitize_delimiter
@@ -144,32 +142,31 @@ class ExpertiseAdaptiveService:
                     f"### BEGIN_SOURCE_DATA ###\n{sanitized_src}\n### END_SOURCE_DATA ###\n\nTechnical Summary:"
                 )
 
-                headers = {"Content-Type": "application/json", "x-goog-api-key": self.gemini_api_key}
-                async with httpx.AsyncClient(timeout=20.0) as client:
-                    n_res = await client.post("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent", headers=headers, json={"contents": [{"parts": [{"text": novice_prompt}]}]})
-                    i_res = await client.post("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent", headers=headers, json={"contents": [{"parts": [{"text": intermediate_prompt}]}]})
-                    e_res = await client.post("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent", headers=headers, json={"contents": [{"parts": [{"text": expert_prompt}]}]})
+                from backend.services.multi_agent_service import multi_agent_service
+                n_out = await multi_agent_service.llm_client.generate_text(novice_prompt, mode=mode)
+                i_out = await multi_agent_service.llm_client.generate_text(intermediate_prompt, mode=mode)
+                e_out = await multi_agent_service.llm_client.generate_text(expert_prompt, mode=mode)
 
-                    if n_res.status_code == 200 and i_res.status_code == 200 and e_res.status_code == 200:
-                        novice_text = n_res.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-                        intermediate_text = i_res.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-                        expert_text = e_res.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+                if n_out.get("text") and i_out.get("text") and e_out.get("text"):
+                    novice_text = n_out["text"].strip()
+                    intermediate_text = i_out["text"].strip()
+                    expert_text = e_out["text"].strip()
 
-                        # Enforce terminology constraints
-                        novice_text = self._apply_constraints(novice_text, constraints)
-                        intermediate_text = self._apply_constraints(intermediate_text, constraints)
-                        expert_text = self._apply_constraints(expert_text, constraints)
+                    # Enforce terminology constraints
+                    novice_text = self._apply_constraints(novice_text, constraints)
+                    intermediate_text = self._apply_constraints(intermediate_text, constraints)
+                    expert_text = self._apply_constraints(expert_text, constraints)
 
-                        return self._package_result(
-                            source_text=source_text,
-                            novice_text=novice_text,
-                            intermediate_text=intermediate_text,
-                            expert_text=expert_text,
-                            target_lang=target_lang,
-                            terms_summary=terms_summary,
-                            mode="live_llm",
-                            appropriateness_score=None
-                        )
+                    return self._package_result(
+                        source_text=source_text,
+                        novice_text=novice_text,
+                        intermediate_text=intermediate_text,
+                        expert_text=expert_text,
+                        target_lang=target_lang,
+                        terms_summary=terms_summary,
+                        mode="live_llm",
+                        appropriateness_score=None
+                    )
             except Exception as e:
                 logger.warning(f"Live adaptive summarization failed: {e}. Falling back to faithful extractive engine.")
 

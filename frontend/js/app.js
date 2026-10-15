@@ -67,7 +67,7 @@ function updateSystemModeBanner(mode, engine) {
       : "Live LLM offline; running deterministic extractive summarization and verified domain mappings.";
   }
   if (tagEl) {
-    tagEl.textContent = `Engine: ${engine || (isLive ? 'live:gemini-1.5-flash' : 'offline_deterministic')}`;
+    tagEl.textContent = `Engine: ${engine || (isLive ? 'live:gemini-2.5-flash' : 'offline_deterministic')}`;
   }
   if (sideTextEl) {
     sideTextEl.textContent = isLive ? "Live LLM Pipeline" : "Deterministic Engine";

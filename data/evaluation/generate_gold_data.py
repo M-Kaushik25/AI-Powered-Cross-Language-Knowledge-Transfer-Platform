@@ -114,25 +114,183 @@ BIOMED_TERMS = [
     ("hemodynamic stability", "हेमोडायनामिक स्थिरता", "இரத்த ஓட்ட நிலைத்தன்மை", "hämodynamische Stabilität", "estabilidad hemodinámica")
 ]
 
-# Build 100 sentences per domain
+# 10 Diverse Syntactic Templates for Cloud Computing
+CLOUD_TEMPLATES = [
+    {
+        "en": "In resilient cloud topologies, {t1_en} provides operational stability while {t2_en} optimizes resource allocation.",
+        "hi": "लचीले क्लाउड टोपोलॉजी में, {t1_hi} परिचालन स्थिरता प्रदान करता है जबकि {t2_hi} संसाधन आवंटन का अनुकूलन करता है।",
+        "ta": "மீள்தன்மை கொண்ட கிளவுட் கட்டமைப்பில், {t1_ta} செயல்பாட்டு நிலைத்தன்மையை வழங்குகிறது அதே நேரத்தில் {t2_ta} வள ஒதுக்கீட்டை மேம்படுத்துகிறது.",
+        "de": "In resilienten Cloud-Topologien gewährleistet {t1_de} Betriebsstabilität, während {t2_de} die Ressourcenzuweisung optimiert.",
+        "es": "En topologías de nube resilientes, {t1_es} proporciona estabilidad operativa mientras que {t2_es} optimiza la asignación de recursos."
+    },
+    {
+        "en": "Production clusters rely on {t1_en} to maintain service continuity whenever {t2_en} triggers automatic failover.",
+        "hi": "उत्पादन क्लस्टर सेवा निरंतरता बनाए रखने के लिए {t1_hi} पर निर्भर करते हैं जब भी {t2_hi} स्वचालित विफलता नियंत्रण को ट्रिगर करता है।",
+        "ta": "உற்பத்தி கிளஸ்டர்கள் சேவை தொடர்ச்சியை பராமரிக்க {t1_ta} சார்ந்துள்ளன, எப்போது {t2_ta} தானியங்கி தோல்வி மாற்றத்தை தூண்டுகிறதோ அப்போது.",
+        "de": "Produktionscluster verlassen sich auf {t1_de}, um die Servicekontinuität aufrechtzuerhalten, wann immer {t2_de} ein automatisches Failover auslöst.",
+        "es": "Los clústeres de producción confían en {t1_es} para mantener la continuidad del servicio siempre que {t2_es} activa la conmutación por error automática."
+    },
+    {
+        "en": "Systems engineering audits mandate that {t1_en} be verified before deploying {t2_en} across distributed regions.",
+        "hi": "सिस्टम इंजीनियरिंग ऑडिट यह अनिवार्य करते हैं कि वितरित क्षेत्रों में {t2_hi} तैनात करने से पहले {t1_hi} का सत्यापन किया जाए।",
+        "ta": "கணினி பொறியியல் தணிக்கைகள், பரவலாக்கப்பட்ட பிராந்தியங்களில் {t2_ta} வரிசைப்படுத்துவதற்கு முன் {t1_ta} சரிபார்க்கப்பட வேண்டும் என்று கட்டாயப்படுத்துகின்றன.",
+        "de": "System-Engineering-Audits schreiben vor, dass {t1_de} vor der Bereitstellung von {t2_de} über verteilte Regionen hinweg überprüft wird.",
+        "es": "Las auditorías de ingeniería de sistemas exigen que {t1_es} se verifique antes de implementar {t2_es} en regiones distribuidas."
+    },
+    {
+        "en": "During automated incident response, telemetry monitors {t1_en} while mitigating bottlenecks caused by {t2_en}.",
+        "hi": "स्वचालित घटना प्रतिक्रिया के दौरान, टेलीमेट्री {t1_hi} की निगरानी करती है जबकि {t2_hi} के कारण होने वाले अवरोधों को कम करती है।",
+        "ta": "தானியங்கி சம்பவ மறுமொழி போது, தொலைஅளவீடு {t1_ta} கண்காணிக்கிறது அதே வேளையில் {t2_ta} காரணமாக ஏற்படும் தடைகளை தணிக்கிறது.",
+        "de": "Bei der automatisierten Vorfallsreaktion überwacht die Telemetrie {t1_de}, während durch {t2_de} verursachte Engpässe gemildert werden.",
+        "es": "Durante la respuesta automatizada a incidentes, la telemetría supervisa {t1_es} mientras mitiga los cuellos de botella causados por {t2_es}."
+    },
+    {
+        "en": "Architectural standards require {t1_en} for disaster recovery while {t2_en} ensures rapid recovery objectives.",
+        "hi": "वास्तुकला मानक आपदा पुनरुद्धार के लिए {t1_hi} की आवश्यकता रखते हैं जबकि {t2_hi} त्वरित पुनर्प्राप्ति उद्देश्यों को सुनिश्चित करता है।",
+        "ta": "கட்டமைப்பு தரநிலைகள் பேரிடர் மீட்புக்கு {t1_ta} தேவைப்படுத்துகின்றன, அதே நேரத்தில் {t2_ta} விரைவான மீட்பு இலக்குகளை உறுதி செய்கிறது.",
+        "de": "Architekturstandards erfordern {t1_de} für die Notfallwiederherstellung, während {t2_de} schnelle Wiederherstellungsziele gewährleistet.",
+        "es": "Los estándares arquitectónicos requieren {t1_es} para la recuperación ante desastres mientras que {t2_es} garantiza objetivos de recuperación rápida."
+    },
+    {
+        "en": "To handle peak traffic surges, infrastructure engineers deploy {t1_en} alongside {t2_en} for dynamic elasticity.",
+        "hi": "शीर्ष ट्रैफ़िक वृद्धि को संभालने के लिए, अवसंरचना इंजीनियर गतिशील लोच के लिए {t2_hi} के साथ {t1_hi} तैनात करते हैं।",
+        "ta": "அதிவேக போக்குவரத்து எழுச்சிகளைக் கையாள, உள்கட்டமைப்பு பொறியாளர்கள் மாறும் நெகிழ்ச்சிக்காக {t2_ta} உடன் {t1_ta} பயன்படுத்துகின்றனர்.",
+        "de": "Um Spitzenlasten zu bewältigen, setzen Infrastrukturingenieure {t1_de} zusammen mit {t2_de} für dynamische Elastizität ein.",
+        "es": "Para gestionar los picos de tráfico, los ingenieros de infraestructura implementan {t1_es} junto con {t2_es} para lograr elasticidad dinámica."
+    },
+    {
+        "en": "Secured cloud networks isolate {t1_en} within protected zones while continuously validating {t2_en}.",
+        "hi": "सुरक्षित क्लाउड नेटवर्क {t2_hi} को लगातार मान्य करते हुए सुरक्षित क्षेत्रों में {t1_hi} को अलग करते हैं।",
+        "ta": "பாதுகாப்பான கிளவுட் நெட்வொர்க்குகள் {t2_ta} தொடர்ந்து சரிபார்க்கும் போது பாதுகாக்கப்பட்ட மண்டலங்களில் {t1_ta} தனிமைப்படுத்துகின்றன.",
+        "de": "Sichere Cloud-Netzwerke isolieren {t1_de} in geschützten Zonen, während {t2_de} kontinuierlich validiert wird.",
+        "es": "Las redes de nube seguras aíslan {t1_es} dentro de zonas protegidas mientras validan continuamente {t2_es}."
+    },
+    {
+        "en": "Modern microservice runtimes orchestrate {t1_en} to prevent cascading faults and regulate {t2_en}.",
+        "hi": "आधुनिक माइक्रोसर्विस रनटाइम कैस्केडिंग दोषों को रोकने और {t2_hi} को नियंत्रित करने के लिए {t1_hi} का समन्वय करते हैं।",
+        "ta": "நவீன நுண்சேவை இயக்க நேரங்கள் தொடர் பிழைகளைத் தடுக்கவும் {t2_ta} ஒழுங்குபடுத்தவும் {t1_ta} ஒருங்கிணைக்கின்றன.",
+        "de": "Moderne Microservice-Laufzeiten orchestrieren {t1_de}, um kaskadierende Fehler zu verhindern und {t2_de} zu regulieren.",
+        "es": "Los entornos de ejecución de microservicios modernos organizan {t1_es} para evitar fallos en cascada y regular {t2_es}."
+    },
+    {
+        "en": "Performance evaluation metrics correlate {t1_en} with end-to-end latency while monitoring {t2_en}.",
+        "hi": "प्रदर्शन मूल्यांकन मेट्रिक्स {t2_hi} की निगरानी करते समय {t1_hi} को शुरू से अंत तक की विलंबता के साथ सहसंबंधित करते हैं।",
+        "ta": "செயல்திறன் மதிப்பீட்டு அளவீடுகள் {t2_ta} கண்காணிக்கும் போது {t1_ta} தொடக்கத்திலிருந்து முடிவு வரையிலான தாமதத்துடன் தொடர்புபடுத்துகின்றன.",
+        "de": "Leistungsbewertungsmetriken korrelieren {t1_de} mit der End-to-End-Latenz, während {t2_de} überwacht wird.",
+        "es": "Las métricas de evaluación del rendimiento correlacionan {t1_es} con la latencia de extremo a extremo mientras supervisan {t2_es}."
+    },
+    {
+        "en": "Service level agreements guarantee that {t1_en} meets stringent availability targets alongside {t2_en}.",
+        "hi": "सेवा स्तर समझौते यह गारंटी देते हैं कि {t1_hi} {t2_hi} के साथ कड़े उपलब्धता लक्ष्यों को पूरा करता है।",
+        "ta": "சேவை நிலை ஒப்பந்தங்கள் {t1_ta} ஆனது {t2_ta} உடன் கடுமையான கிடைக்கும் இலக்குகளை பூர்த்தி செய்கிறது என்று உத்தரவாதம் அளிக்கின்றன.",
+        "de": "Service-Level-Agreements garantieren, dass {t1_de} neben {t2_de} strenge Verfügbarkeitsziele erfüllt.",
+        "es": "Los acuerdos de nivel de servicio garantizan que {t1_es} cumple con estrictos objetivos de disponibilidad junto con {t2_es}."
+    }
+]
+
+# 10 Diverse Syntactic Templates for Biomedical Devices
+BIOMED_TEMPLATES = [
+    {
+        "en": "During clinical life-support management, {t1_en} maintains patient safety while continuous monitoring tracks {t2_en}.",
+        "hi": "नैदानिक जीवन-रक्षक प्रबंधन के दौरान, {t1_hi} रोगी की सुरक्षा बनाए रखता है जबकि निरंतर निगरानी {t2_hi} को ट्रैक करती है।",
+        "ta": "மருத்துவ உயிர் ஆதரவு நிர்வாகத்தின் போது, {t1_ta} நோயாளி பாதுகாப்பை பராமரிக்கிறது அதே நேரத்தில் தொடர்ச்சியான கண்காணிப்பு {t2_ta} கண்காணிக்கிறது.",
+        "de": "Während des klinischen Lebenserhaltungsmanagements gewährleistet {t1_de} die Patientensicherheit, während kontinuierliche Überwachung {t2_de} verfolgt.",
+        "es": "Durante el manejo de soporte vital clínico, {t1_es} mantiene la seguridad del paciente mientras que la monitorización continua registra {t2_es}."
+    },
+    {
+        "en": "Intensive care protocols require that {t1_en} be calibrated precisely before initiating {t2_en}.",
+        "hi": "गहन देखभाल प्रोटोकॉल यह आवश्यक बनाते हैं कि {t2_hi} शुरू करने से पहले {t1_hi} को सटीक रूप से कैलिब्रेट किया जाए।",
+        "ta": "தீவிர சிகிச்சை நெறிமுறைகள் {t2_ta} தொடங்குவதற்கு முன் {t1_ta} துல்லியமாக அளவீடு செய்யப்பட வேண்டும் என்று கோருகின்றன.",
+        "de": "Intensivpflegeprotokolle erfordern, dass {t1_de} vor Beginn von {t2_de} präzise kalibriert wird.",
+        "es": "Los protocolos de cuidados intensivos requieren que {t1_es} se calibre con precisión antes de iniciar {t2_es}."
+    },
+    {
+        "en": "Physiological regulation relies on {t1_en} to stabilize acute parameters while evaluating {t2_en}.",
+        "hi": "शारीरिक विनियमन {t2_hi} का मूल्यांकन करते समय तीव्र मापदंडों को स्थिर करने के लिए {t1_hi} पर निर्भर करता है।",
+        "ta": "உடலியல் கட்டுப்பாடு {t2_ta} மதிப்பிடும் போது கடுமையான அளவுருக்களை நிலைநிறுத்த {t1_ta} சார்ந்துள்ளது.",
+        "de": "Die physiologische Regulation stützt sich auf {t1_de}, um akute Parameter zu stabilisieren, während {t2_de} bewertet wird.",
+        "es": "La regulación fisiológica se apoya en {t1_es} para estabilizar parámetros agudos mientras evalúa {t2_es}."
+    },
+    {
+        "en": "During intraoperative procedures, surgical teams monitor {t1_en} closely to detect anomalies in {t2_en}.",
+        "hi": "इंट्राऑपरेटिव प्रक्रियाओं के दौरान, सर्जिकल टीमें {t2_hi} में विसंगतियों का पता लगाने के लिए {t1_hi} की बारीकी से निगरानी करती हैं।",
+        "ta": "அறுவை சிகிச்சையின் போது, அறுவை சிகிச்சை குழுக்கள் {t2_ta} இல் உள்ள முரண்பாடுகளைக் கண்டறிய {t1_ta} உன்னிப்பாகக் கண்காணிக்கின்றன.",
+        "de": "Bei intraoperativen Eingriffen überwachen die Operationsteams {t1_de} genau, um Anomalien in {t2_de} zu erkennen.",
+        "es": "Durante los procedimientos intraoperatorios, los equipos quirúrgicos supervisan {t1_es} de cerca para detectar anomalías en {t2_es}."
+    },
+    {
+        "en": "Diagnostic validation demonstrates that {t1_en} correlates strongly with patient outcomes and {t2_en}.",
+        "hi": "नैदानिक सत्यापन यह दर्शाता है कि {t1_hi} रोगी के परिणामों और {t2_hi} के साथ दृढ़ता से संबंधित है।",
+        "ta": "நோயறிதல் சரிபார்ப்பு {t1_ta} ஆனது நோயாளியின் விளைவுகள் மற்றும் {t2_ta} உடன் வலுவாக தொடர்பு கொண்டுள்ளது என்பதை நிரூபிக்கிறது.",
+        "de": "Die diagnostische Validierung zeigt, dass {t1_de} stark mit den Patientenergebnissen und {t2_de} korreliert.",
+        "es": "La validación diagnóstica demuestra que {t1_es} se correlaciona fuertemente con los resultados del paciente y {t2_es}."
+    },
+    {
+        "en": "Biomedical engineering standards require fail-safe alarms for {t1_en} to prevent disruption of {t2_en}.",
+        "hi": "बायोमेडिकल इंजीनियरिंग मानक {t2_hi} के विघटन को रोकने के लिए {t1_hi} के लिए विफलता-सुरक्षित अलार्म अनिवार्य करते हैं।",
+        "ta": "உயிரி மருத்துவ பொறியியல் தரநிலைகள் {t2_ta} சீர்குலைவைத் தடுக்க {t1_ta} க்கான பாதுகாப்பு எச்சரிக்கைகளை கட்டாயமாக்குகின்றன.",
+        "de": "Biomedizinische Technikstandards erfordern ausfallsichere Alarme für {t1_de}, um eine Unterbrechung von {t2_de} zu verhindern.",
+        "es": "Los estándares de ingeniería biomédica requieren alarmas a prueba de fallos para {t1_es} para evitar la interrupción de {t2_es}."
+    },
+    {
+        "en": "In advanced respiratory therapy, closed-loop adjustments to {t1_en} protect against risks associated with {t2_en}.",
+        "hi": "उन्नत श्वसन चिकित्सा में, {t1_hi} में क्लोज्ड-लूप समायोजन {t2_hi} से जुड़े जोखिमों से रक्षा करते हैं।",
+        "ta": "மேம்பட்ட சுவாச சிகிச்சையில், {t1_ta} க்கான மூடிய-வளைய மாற்றங்கள் {t2_ta} உடன் தொடர்புடைய அபாயங்களிலிருந்து பாதுகாக்கின்றன.",
+        "de": "In der fortgeschrittenen Beatmungstherapie schützen Regelkreis-Anpassungen an {t1_de} vor Risiken im Zusammenhang mit {t2_de}.",
+        "es": "En la terapia respiratoria avanzada, los ajustes de bucle cerrado a {t1_es} protegen contra los riesgos asociados con {t2_es}."
+    },
+    {
+        "en": "Cardiopulmonary perfusion protocols manage {t1_en} carefully while administering therapeutic levels of {t2_en}.",
+        "hi": "कार्डियोपल्मोनरी परफ्यूजन प्रोटोकॉल {t2_hi} के चिकित्सीय स्तरों का प्रबंध करते हुए {t1_hi} को सावधानीपूर्वक प्रबंधित करते हैं।",
+        "ta": "இதய நுரையீரல் பெர்பியூஷன் நெறிமுறைகள் {t2_ta} இன் சிகிச்சை அளவுகளை வழங்கும் போது {t1_ta} கவனமாக நிர்வகிக்கின்றன.",
+        "de": "Kardiopulmonale Perfusionsprotokolle steuern {t1_de} sorgfältig, während therapeutische Mengen von {t2_de} verabreicht werden.",
+        "es": "Los protocolos de perfusión cardiopulmonar manejan {t1_es} cuidadosamente mientras administran niveles terapéuticos de {t2_es}."
+    },
+    {
+        "en": "Post-operative telemetry tracks recovery by measuring {t1_en} alongside continuous baseline readings of {t2_en}.",
+        "hi": "ऑपरेशन के बाद की टेलीमेट्री {t2_hi} के निरंतर आधारभूत रीडिंग के साथ {t1_hi} को मापकर रिकवरी को ट्रैक करती है।",
+        "ta": "அறுவை சிகிச்சைக்குப் பிந்தைய தொலைஅளவீடு {t2_ta} இன் தொடர்ச்சியான அடிப்படை அளவீடுகளுடன் {t1_ta} அளவிடுவதன் மூலம் மீட்சியை கண்காணிக்கிறது.",
+        "de": "Die postoperative Telemetrie verfolgt die Genesung, indem sie {t1_de} zusammen mit kontinuierlichen Basismessungen von {t2_de} misst.",
+        "es": "La telemetría postoperatoria registra la recuperación midiendo {t1_es} junto con lecturas basales continuas de {t2_es}."
+    },
+    {
+        "en": "Critical care clinicians monitor {t1_en} within tight tolerance bands to ensure safe delivery of {t2_en}.",
+        "hi": "क्रिटिकल केयर चिकित्सक {t2_hi} की सुरक्षित डिलीवरी सुनिश्चित करने के लिए सख्त सहनशीलता बैंड के भीतर {t1_hi} की निगरानी करते हैं।",
+        "ta": "தீவிர சிகிச்சை மருத்துவர்கள் {t2_ta} இன் பாதுகாப்பான விநியோகத்தை உறுதி செய்வதற்காக இறுக்கமான சகிப்புத்தன்மை வரம்புகளுக்குள் {t1_ta} கண்காணிக்கின்றனர்.",
+        "de": "Intensivmediziner überwachen {t1_de} innerhalb enger Toleranzgrenzen, um eine sichere Verabreichung von {t2_de} zu gewährleisten.",
+        "es": "Los médicos de cuidados intensivos monitorizan {t1_es} dentro de bandas de tolerancia estrechas para garantizar la administración segura de {t2_es}."
+    }
+]
+
+# Build 100 sentences per domain using 10 diverse syntactic templates
 cloud_sentences = []
 for i in range(100):
     t_idx = i % len(CLOUD_TERMS)
     t2_idx = (i + 1) % len(CLOUD_TERMS)
+    tmpl = CLOUD_TEMPLATES[i % len(CLOUD_TEMPLATES)]
     term1 = CLOUD_TERMS[t_idx]
     term2 = CLOUD_TERMS[t2_idx]
+
+    fmt_kwargs = {
+        "t1_en": term1[0], "t1_hi": term1[1], "t1_ta": term1[2], "t1_de": term1[3], "t1_es": term1[4],
+        "t2_en": term2[0], "t2_hi": term2[1], "t2_ta": term2[2], "t2_de": term2[3], "t2_es": term2[4],
+    }
     
-    en = f"In resilient cloud topologies, {term1[0]} provides operational stability while {term2[0]} optimizes resource allocation."
-    hi = f"लचीले क्लाउड टोपोलॉजी में, {term1[1]} परिचालन स्थिरता प्रदान करता है जबकि {term2[1]} संसाधन आवंटन का अनुकूलन करता है।"
-    ta = f"மீள்தன்மை கொண்ட கிளவுட் கட்டமைப்பில், {term1[2]} செயல்பாட்டு நிலைத்தன்மையை வழங்குகிறது அதே நேரத்தில் {term2[2]} வள ஒதுக்கீட்டை மேம்படுத்துகிறது."
-    de = f"In resilienten Cloud-Topologien gewährleistet {term1[3]} Betriebsstabilität, während {term2[3]} die Ressourcenzuweisung optimiert."
-    es = f"En topologías de nube resilientes, {term1[4]} proporciona estabilidad operativa mientras que {term2[4]} optimiza la asignación de recursos."
+    en = tmpl["en"].format(**fmt_kwargs)
+    hi = tmpl["hi"].format(**fmt_kwargs)
+    ta = tmpl["ta"].format(**fmt_kwargs)
+    de = tmpl["de"].format(**fmt_kwargs)
+    es = tmpl["es"].format(**fmt_kwargs)
 
     cloud_sentences.append({
         "id": f"cloud_eval_{i+1:03d}",
         "domain": "cloud_computing",
         "source_en": en,
         "terms": [term1[0], term2[0]],
+        "term_translations": {
+            term1[0]: {"hi": term1[1], "ta": term1[2], "de": term1[3], "es": term1[4]},
+            term2[0]: {"hi": term2[1], "ta": term2[2], "de": term2[3], "es": term2[4]}
+        },
         "gold_translations": {"hi": hi, "ta": ta, "de": de, "es": es},
         "validated_by": "Senior Systems Architect Reviewer #1 & #2",
         "validation_method": "Dual-blind parallel corpus inspection and terminology verification",
@@ -143,20 +301,30 @@ biomed_sentences = []
 for i in range(100):
     t_idx = i % len(BIOMED_TERMS)
     t2_idx = (i + 1) % len(BIOMED_TERMS)
+    tmpl = BIOMED_TEMPLATES[i % len(BIOMED_TEMPLATES)]
     term1 = BIOMED_TERMS[t_idx]
     term2 = BIOMED_TERMS[t2_idx]
 
-    en = f"During clinical life-support management, {term1[0]} maintains patient safety while continuous monitoring tracks {term2[0]}."
-    hi = f"नैदानिक जीवन-रक्षक प्रबंधन के दौरान, {term1[1]} रोगी की सुरक्षा बनाए रखता है जबकि निरंतर निगरानी {term2[1]} को ट्रैक करती है।"
-    ta = f"மருத்துவ தீவிர சிகிச்சை நிர்வாகத்தின் போது, {term1[2]} நோயாளி பாதுகாப்பை உறுதி செய்கிறது மற்றும் தொடர் கண்காணிப்பு {term2[2]} ஐ கண்காணிக்கிறது."
-    de = f"Während der klinischen Intensivbehandlung gewährleistet {term1[3]} die Patientensicherheit, während die kontinuierliche Überwachung {term2[3]} erfasst."
-    es = f"Durante el soporte vital clínico, {term1[4]} garantiza la seguridad del paciente mientras la monitorización continua registra {term2[4]}."
+    fmt_kwargs = {
+        "t1_en": term1[0], "t1_hi": term1[1], "t1_ta": term1[2], "t1_de": term1[3], "t1_es": term1[4],
+        "t2_en": term2[0], "t2_hi": term2[1], "t2_ta": term2[2], "t2_de": term2[3], "t2_es": term2[4],
+    }
+
+    en = tmpl["en"].format(**fmt_kwargs)
+    hi = tmpl["hi"].format(**fmt_kwargs)
+    ta = tmpl["ta"].format(**fmt_kwargs)
+    de = tmpl["de"].format(**fmt_kwargs)
+    es = tmpl["es"].format(**fmt_kwargs)
 
     biomed_sentences.append({
         "id": f"biomed_eval_{i+1:03d}",
         "domain": "biomedical_devices",
         "source_en": en,
         "terms": [term1[0], term2[0]],
+        "term_translations": {
+            term1[0]: {"hi": term1[1], "ta": term1[2], "de": term1[3], "es": term1[4]},
+            term2[0]: {"hi": term2[1], "ta": term2[2], "de": term2[3], "es": term2[4]}
+        },
         "gold_translations": {"hi": hi, "ta": ta, "de": de, "es": es},
         "validated_by": "Biomedical Engineering Board Reviewer #1 & #2",
         "validation_method": "Dual-blind parallel clinical corpus inspection and medical terminology verification",

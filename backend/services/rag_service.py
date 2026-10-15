@@ -1,3 +1,4 @@
+import hashlib
 import io
 import json
 import logging
@@ -6,12 +7,11 @@ import re
 import uuid
 from typing import Any, Optional
 
-import httpx
 import numpy as np
 
 from backend.config import EMBEDDING_MODEL, GEMINI_API_KEY, SUPPORTED_LANGUAGES
 from backend.database import get_db, get_utc_now_iso
-from backend.services.kg_service import kg_service
+from backend.services.kg_service import SEED_TERMS, kg_service
 
 logger = logging.getLogger("clrag.rag")
 
@@ -19,6 +19,7 @@ logger = logging.getLogger("clrag.rag")
 # Legacy Bilingual Bridge Dictionary (Explicitly labeled as legacy fallback, never used in evaluation)
 LEGACY_BILINGUAL_BRIDGE_FALLBACK: dict[str, str] = {
     "फॉल्ट": "fault", "टॉलेरेंस": "tolerance", "विफलता": "failure",
+    "त्रुटि": "fault", "सहिष्णुता": "tolerance", "दोष": "fault", "सहनशीलता": "tolerance",
     "लोड": "load", "बैलेंसर": "balancer", "वितरण": "distribute",
     "सर्किट": "circuit", "ब्रेकर": "breaker", "सुरक्षा": "security",
     "कैसे": "how", "काम": "work", "प्रणाली": "system", "नेटवर्क": "network",
@@ -170,6 +171,11 @@ class DenseMultilingualEmbedding:
         return self._model
 
 
+    @staticmethod
+    def _det_hash(token: str, dim: int) -> int:
+        digest = hashlib.blake2b(token.encode("utf-8"), digest_size=4).digest()
+        return int.from_bytes(digest, "little") % dim
+
     def encode(self, text: str) -> np.ndarray:
         model = self._get_model()
         if model is not None:
@@ -179,11 +185,43 @@ class DenseMultilingualEmbedding:
             except Exception as e:
                 logger.warning(f"SentenceTransformer encoding error: {e}. Falling back.")
 
-        return self._fallback_multilingual_vector(text)
+        # Check if known non-English KG terms appear in text to bridge cross-lingual projection
+        augmented_text = text
+        text_lower = text.lower()
+        try:
+            for st in SEED_TERMS:
+                src_term = st.get("source_term", "")
+                for lang_code, trans_val in st.get("translations", {}).items():
+                    if lang_code != "en" and trans_val:
+                        variants = [trans_val.lower()]
+                        if "(" in trans_val:
+                            base = trans_val.split("(")[0].strip().lower()
+                            if base:
+                                variants.append(base)
+                            for inn in re.findall(r'\((.*?)\)', trans_val):
+                                if inn.strip():
+                                    variants.append(inn.strip().lower())
+                        matched = False
+                        for cand in variants:
+                            if cand and (cand in text_lower or (len(text_lower) >= 4 and text_lower in cand)):
+                                augmented_text += f" {src_term}"
+                                matched = True
+                                break
+                        if matched:
+                            break
+
+            # Also check legacy bilingual bridge dictionary for token matches
+            for token, en_word in LEGACY_BILINGUAL_BRIDGE_FALLBACK.items():
+                if token in text_lower:
+                    augmented_text += f" {en_word}"
+        except Exception:
+            pass
+
+        return self._fallback_multilingual_vector(augmented_text)
 
     def _fallback_multilingual_vector(self, text: str) -> np.ndarray:
         """
-        Deterministic, zero-dependency multilingual semantic feature projection.
+        Deterministic, zero-dependency multilingual semantic feature projection using blake2b.
         Maps Unicode char n-grams, technical tokens, and subwords into a unit-normalized float32 vector.
         """
         vec = np.zeros(self.dim, dtype=np.float32)
@@ -191,13 +229,13 @@ class DenseMultilingualEmbedding:
         words = re.findall(r'\b[\w\u0900-\u097F\u0B80-\u0BFF\-]+\b', text_clean)
 
         for w in words:
-            # Word hash
-            h_w = abs(hash(w)) % self.dim
+            # Word hash using deterministic blake2b
+            h_w = self._det_hash(w, self.dim)
             vec[h_w] += 1.0
             # Char trigrams
             for i in range(len(w) - 2):
                 tri = w[i:i+3]
-                h_tri = abs(hash(tri)) % self.dim
+                h_tri = self._det_hash(tri, self.dim)
                 vec[h_tri] += 0.4
 
         norm = np.linalg.norm(vec)
@@ -547,8 +585,8 @@ class CrossLanguageRAGService:
         # Dynamic empirical confidence (strictly non-constant)
         calibrated_confidence = round(max(0.25, min(0.95, top_score * 0.85 + 0.08)), 4)
 
-        # If live Gemini is active, query neural model
-        if self.gemini_api_key and top_score > 0.25:
+        # If live Gemini is active, query neural model via unified LLMClient
+        if top_score > 0.25:
             try:
                 lang_name = SUPPORTED_LANGUAGES.get(target_lang, "English")
                 prompt = (
@@ -560,18 +598,13 @@ class CrossLanguageRAGService:
                     f"QUESTION: {question}\n\n"
                     f"ANSWER:"
                 )
-                headers = {"Content-Type": "application/json", "x-goog-api-key": self.gemini_api_key}
-                async with httpx.AsyncClient(timeout=15.0) as client:
-                    resp = await client.post(
-                        "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent",
-                        headers=headers,
-                        json={"contents": [{"parts": [{"text": prompt}]}]}
+                from backend.services.multi_agent_service import multi_agent_service
+                res = await multi_agent_service.llm_client.generate_text(prompt)
+                if res.get("text"):
+                    ans = res["text"].strip()
+                    return self._save_and_package_message(
+                        conversation_id, space_id, question, ans, target_lang, citations, calibrated_confidence
                     )
-                    if resp.status_code == 200:
-                        ans = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-                        return self._save_and_package_message(
-                            conversation_id, space_id, question, ans, target_lang, citations, calibrated_confidence
-                        )
             except Exception as e:
                 logger.warning(f"Live answering failed: {e}. Falling back to deterministic answering.")
 

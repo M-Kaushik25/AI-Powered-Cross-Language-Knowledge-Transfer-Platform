@@ -209,6 +209,38 @@ class MultiAgentTranslationService:
                     target_lang=target_lang
                 )
 
+                # Bounded 1-Step Agentic Self-Correction Loop
+                self_correction_triggered = False
+                if verifier_res["violated"] and constraints:
+                    self_correction_triggered = True
+                    violated_items = verifier_res["violated"]
+                    v_prompts = [f"- '{v['source_term']}' -> '{v['target_term']}'" for v in violated_items]
+                    if segment_mode == "live":
+                        correction_prompt = (
+                            f"You are a specialized technical translator in domain '{domain}'.\n"
+                            f"The previous draft translation violated required terminology constraints.\n"
+                            f"Original segment: {segment}\n"
+                            f"Previous draft: {draft_translation}\n"
+                            f"Violated constraints that MUST be strictly included:\n" + "\n".join(v_prompts) + "\n"
+                            f"Target Language: {SUPPORTED_LANGUAGES.get(target_lang, target_lang)}\n"
+                            f"Provide the revised translation only, ensuring all required target terms are included without preamble:"
+                        )
+                        cor_res = await self.llm_client.generate_text(correction_prompt, mode=mode)
+                        if cor_res["text"]:
+                            draft_translation = cor_res["text"]
+                    else:
+                        draft_translation = self._deterministic_translate(
+                            segment, constraints, source_lang, target_lang
+                        )
+
+                    # Re-run verifier once on revised draft
+                    verifier_res = self._run_verifier_agent(
+                        source_segment=segment,
+                        draft_translation=draft_translation,
+                        constraints=constraints,
+                        target_lang=target_lang
+                    )
+
                 # Step 4: Agent 3 - Domain-Critic Agent
                 critic_res = await self._run_critic_agent(
                     source_segment=segment,
@@ -267,7 +299,8 @@ class MultiAgentTranslationService:
                         "satisfied": verifier_res["satisfied"],
                         "violated": verifier_res["violated"],
                         "term_satisfaction_rate": verifier_res["score"],
-                        "explanation": verifier_res.get("explanation", "")
+                        "explanation": verifier_res.get("explanation", ""),
+                        "self_correction_triggered": self_correction_triggered
                     },
                     # Agent 3: Cross-Lingual Context Validator
                     "agent_3_context_validator": {
@@ -351,7 +384,10 @@ class MultiAgentTranslationService:
                 "weighted_confidence": avg_confidence,
                 "term_usage_rate_percent": term_usage_rate,
                 "review_volume_percentage": review_vol_pct,
-                "ece_estimate": 0.042
+                "ece_estimate": (
+                    round(float(sum(abs(s["calibrated_confidence"] - (len(s["agent_2_terminology_controller"]["satisfied"]) / max(len(s["constraints_injected"]), 1))) for s in segment_results) / max(len(segment_results), 1)), 4)
+                    if any(s.get("constraints_injected") for s in segment_results) else 0.0
+                )
             },
             "segments": segment_results
         }
@@ -432,6 +468,51 @@ class MultiAgentTranslationService:
 
         return translated
 
+    @staticmethod
+    def _match_term_in_target(required_term: str, draft_translation: str, target_lang: str) -> bool:
+        """
+        Matches required target term in draft translation, supporting exact substring,
+        stripped parenthetical glosses, and Indic morphological suffix/stem normalization.
+        """
+        draft_lower = draft_translation.lower()
+        clean_term = re.sub(r'\(.*?\)', '', required_term).strip().lower()
+
+        # Exact substring or stripped parenthetical gloss match
+        if required_term.lower() in draft_lower or (clean_term and clean_term in draft_lower):
+            return True
+
+        if not clean_term:
+            return False
+
+        # Indic agglutinative suffix & stem normalization for ta (Tamil) and hi (Hindi)
+        if target_lang in ("ta", "hi"):
+            words = [w for w in re.split(r'\s+', clean_term) if len(w) >= 3]
+            if not words:
+                return False
+
+            suffixes = ["த்தினால்", "த்தை", "உடன்", "கள்", "இல்", "ஆல்", "க்கு", "இன்", "ஐ", "ओं", "यों", "ें"]
+            all_stems_found = True
+            for w in words:
+                stripped_w = w
+                for suf in suffixes:
+                    if stripped_w.endswith(suf) and len(stripped_w) - len(suf) >= 3:
+                        stripped_w = stripped_w[:-len(suf)]
+                        break
+
+                stem_len = max(3, int(len(w) * 0.75))
+                prefix_stem = w[:stem_len]
+
+                if stripped_w in draft_lower or prefix_stem in draft_lower:
+                    continue
+                else:
+                    all_stems_found = False
+                    break
+
+            if all_stems_found:
+                return True
+
+        return False
+
     def _run_verifier_agent(
         self,
         source_segment: str,
@@ -460,10 +541,9 @@ class MultiAgentTranslationService:
         for c in constraints:
             required_term = c["target_term"].lower().strip()
             source_term = c["source_term"].lower().strip()
-            clean_term = re.sub(r'\(.*?\)', '', required_term).strip()
 
-            # Check if required term is present in target
-            present_in_target = required_term in target_lower or clean_term in target_lower
+            # Check if required term is present in target via Indic stem matcher
+            present_in_target = self._match_term_in_target(required_term, draft_translation, target_lang)
 
             # Check if English source term remained untranslated in non-English target
             untranslated_leftover = False
@@ -650,6 +730,73 @@ class MultiAgentTranslationService:
                     now,
                     now
                 ))
+
+    async def refresh_stale_segments(self, job_id: str | None = None) -> list[dict[str, Any]]:
+        """
+        Historical segment refresh upon Knowledge Graph updates:
+        Re-translates segments flagged with needs_refresh = 1 using the updated Living KG,
+        updates target_segment in translation_segments, and resets needs_refresh = 0.
+        """
+        now = get_utc_now_iso()
+        with get_db() as conn:
+            cursor = conn.cursor()
+            if job_id:
+                cursor.execute("""
+                    SELECT s.id, s.job_id, s.source_segment, s.target_segment, s.segment_index,
+                           j.domain, j.target_lang, s.tenant_id
+                    FROM translation_segments s
+                    JOIN translation_jobs j ON s.job_id = j.id
+                    WHERE s.needs_refresh = 1 AND s.job_id = ?
+                """, (job_id,))
+            else:
+                cursor.execute("""
+                    SELECT s.id, s.job_id, s.source_segment, s.target_segment, s.segment_index,
+                           j.domain, j.target_lang, s.tenant_id
+                    FROM translation_segments s
+                    JOIN translation_jobs j ON s.job_id = j.id
+                    WHERE s.needs_refresh = 1
+                """)
+            rows = cursor.fetchall()
+
+        refreshed_records = []
+        for r in rows:
+            seg_id = r["id"]
+            src = r["source_segment"]
+            domain = r["domain"]
+            target_lang = r["target_lang"]
+            tenant_id = r["tenant_id"]
+
+            res = await self.translate_document(
+                source_text=src,
+                target_lang=target_lang,
+                domain=domain,
+                tenant_id=tenant_id,
+                job_id=r["job_id"]
+            )
+            new_target = res["full_translation"]
+            new_conf = res["avg_confidence"]
+
+            with get_db() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    UPDATE translation_segments
+                    SET target_segment = ?,
+                        confidence = ?,
+                        needs_refresh = 0,
+                        updated_at = ?
+                    WHERE id = ?
+                """, (new_target, new_conf, now, seg_id))
+
+            refreshed_records.append({
+                "segment_id": seg_id,
+                "job_id": r["job_id"],
+                "source_segment": src,
+                "old_target_segment": r["target_segment"],
+                "new_target_segment": new_target,
+                "confidence": new_conf
+            })
+
+        return refreshed_records
 
 
 multi_agent_service = MultiAgentTranslationService()

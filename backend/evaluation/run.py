@@ -45,6 +45,13 @@ def parse_args():
         default=None,
         help="Optional path to write summary JSON results.",
     )
+    parser.add_argument(
+        "--mode",
+        type=str,
+        default="offline",
+        choices=["offline", "live", "auto"],
+        help="Execution mode ('offline', 'live', 'auto'). Default: offline.",
+    )
     return parser.parse_args()
 
 
@@ -57,6 +64,7 @@ def main():
     print("=" * 70)
     print(f"Domain:      {args.domain}")
     print(f"Target Lang: {args.target_lang}")
+    print(f"Mode:        {args.mode}")
     print(f"Sample Size: {args.sample_size or 'Full test split'}")
     print("Running comparative evaluation...")
 
@@ -64,6 +72,7 @@ def main():
         domain=args.domain,
         target_lang=args.target_lang,
         sample_size=args.sample_size,
+        mode=args.mode,
     )
 
     print("\n" + "=" * 70)

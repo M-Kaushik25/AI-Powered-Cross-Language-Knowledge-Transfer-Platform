@@ -65,7 +65,7 @@ Executes multi-agent translation pipeline with terminology constraint enforcemen
         "segment_id": 0,
         "source_text": "...",
         "target_text": "...",
-        "engine": "live:gemini-1.5-flash",
+        "engine": "live:gemini-2.5-flash",
         "weighted_confidence": 0.88,
         "verifier_score": 1.0,
         "critic_score": 0.85,

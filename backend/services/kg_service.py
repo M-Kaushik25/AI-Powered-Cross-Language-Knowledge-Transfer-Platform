@@ -948,6 +948,13 @@ class KnowledgeGraphService:
                     term["translations_json"], f"Approved by 2 reviewers ({reviewer_id})", now
                 ))
 
+                source_clean = term["source_term"].lower().strip()
+                cursor.execute("""
+                    UPDATE translation_segments
+                    SET needs_refresh = 1, updated_at = ?
+                    WHERE lower(source_segment) LIKE ?
+                """, (now, f"%{source_clean}%"))
+
                 self.invalidate_cache(tenant_id, term["domain"])
                 return {
                     "term_id": term_id,
@@ -1081,10 +1088,17 @@ class KnowledgeGraphService:
                     now
                 ))
 
+            # Flag any historical translation segments containing this term for refresh
+            cursor.execute("""
+                UPDATE translation_segments
+                SET needs_refresh = 1, updated_at = ?
+                WHERE lower(source_segment) LIKE ?
+            """, (now, f"%{source_clean}%"))
+
             # Record two reviewer approvals so consensus is preserved
             cursor.execute("""
-                INSERT OR IGNORE INTO term_approvals (id, term_id, reviewer_id, reviewer_role, decision, notes, created_at)
-                VALUES (?, ?, ?, ?, 'APPROVED', 'Initial expert correction', ?)
+                INSERT OR IGNORE INTO term_approvals (id, tenant_id, term_id, reviewer_id, reviewer_role, decision, notes, created_at)
+                VALUES (?, 'default_org', ?, ?, ?, 'APPROVED', 'Initial expert correction', ?)
             """, (str(uuid.uuid4()), term_id, reviewer_id, reviewer_role, now))
 
             # Resolve any matching pending items in review queue

@@ -6,6 +6,8 @@ Phase 6 Tests: Faithful Expertise-Adaptive Summarization (D9)
 - Faithfulness guard detecting hallucinated numbers/entities
 - Real readability metrics (English Flesch-Kincaid, proxy for other languages, null appropriateness when unjudged)
 """
+from unittest.mock import patch
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -136,8 +138,9 @@ async def test_adaptive_service_live_mode_mocked():
     import httpx
     import respx
 
+    from backend.config import GEMINI_MODEL
     with respx.mock:
-        respx.post("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent").mock(
+        respx.post(f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent").mock(
             return_value=httpx.Response(
                 200,
                 json={
@@ -152,14 +155,15 @@ async def test_adaptive_service_live_mode_mocked():
 
         old_key = adaptive_service.gemini_api_key
         adaptive_service.gemini_api_key = "fake_key_for_test"
-        try:
-            res = await adaptive_service.generate_adaptive_summaries(
-                source_text="Fault tolerance maintains high system availability.",
-                target_lang="en",
-                domain="cloud_computing",
-                mode="live"
-            )
-            assert res["mode"] == "live_llm"
-            assert "novice_adaptation" in res
-        finally:
-            adaptive_service.gemini_api_key = old_key
+        with patch.dict("os.environ", {"GEMINI_API_KEY": "fake_key_for_test"}):
+            try:
+                res = await adaptive_service.generate_adaptive_summaries(
+                    source_text="Fault tolerance maintains high system availability.",
+                    target_lang="en",
+                    domain="cloud_computing",
+                    mode="live"
+                )
+                assert res["mode"] == "live_llm"
+                assert "novice_adaptation" in res
+            finally:
+                adaptive_service.gemini_api_key = old_key

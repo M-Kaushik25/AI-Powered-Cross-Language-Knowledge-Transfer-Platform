@@ -42,8 +42,9 @@ async def test_live_mode_failing_provider_surfaces_502(respx_mock):
     token = get_token()
     headers = {"Authorization": f"Bearer {token}"}
 
+    from backend.config import GEMINI_MODEL
     # Set up respx mock to simulate Google Gemini API failure
-    respx_mock.post("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent").mock(
+    respx_mock.post(f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent").mock(
         return_value=httpx.Response(500, json={"error": {"message": "Internal Server Error from upstream LLM"}})
     )
 
