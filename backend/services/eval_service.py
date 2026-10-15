@@ -396,15 +396,26 @@ class EvaluationService:
         terms_hit = 0
         terms_total = 0
 
+        # Build static seed glossary mapping from pre-existing SEED_TERMS only
+        seed_glossary: dict[str, str] = {}
+        for st in SEED_TERMS:
+            st_domain = st.get("domain", "")
+            if not domain or st_domain == domain or (domain == "cloud_computing" and st_domain == "distributed_systems"):
+                st_src = st.get("source_term", "").lower().strip()
+                st_tr = st.get("translations", {}).get(target_lang)
+                if st_src and st_tr:
+                    gold_t = self._get_gold_term_translation(st_src, target_lang)
+                    seed_glossary[st_src] = gold_t if gold_t else st_tr
+
         for item in items:
             src = item.get("source_en", "")
             gold_ref = item.get("gold_translations", {}).get(target_lang, src)
 
             constraints = []
             for t in item.get("terms", []):
-                gold_t = self._get_gold_term_translation(t, target_lang)
-                if gold_t:
-                    constraints.append({"source_term": t, "target_term": gold_t})
+                clean_t = t.lower().strip()
+                if clean_t in seed_glossary:
+                    constraints.append({"source_term": t, "target_term": seed_glossary[clean_t]})
 
             t0 = time.perf_counter()
             if mode == "live":
@@ -467,7 +478,7 @@ class EvaluationService:
         all_segs = []
 
         # Round 1: Cold start (strip target coverage for terms in benchmark items)
-        self._simulate_cold_start(items, target_lang)
+        self._simulate_cold_start(items, target_lang, domain=domain)
         kg_service.invalidate_cache()
         r1_metrics, r1_segs, r1_queued = self._eval_pipeline_round(
             items, target_lang, domain, "Round 1 (Cold Start)", mode=mode
@@ -649,22 +660,40 @@ class EvaluationService:
             "terms_satisfied": terms_hit
         }
 
-    def _simulate_cold_start(self, items: list[dict[str, Any]], target_lang: str):
-        """Temporarily removes target language translation in the cloned database only."""
+    def _simulate_cold_start(self, items: list[dict[str, Any]], target_lang: str, domain: str = "cloud_computing"):
+        """Temporarily removes target language translation in the cloned database and registers unknown terms with low confidence."""
+        now = get_utc_now_iso()
         with get_db() as conn:
             cursor = conn.cursor()
             for item in items:
+                item_domain = item.get("domain", domain)
                 for t in item.get("terms", []):
-                    cursor.execute("SELECT id, translations_json FROM terms WHERE source_term = ?", (t.lower().strip(),))
+                    clean_term = t.lower().strip()
+                    if not clean_term:
+                        continue
+                    cursor.execute("SELECT id, translations_json FROM terms WHERE source_term = ?", (clean_term,))
                     row = cursor.fetchone()
-                    if row and row["translations_json"]:
-                        tr = json.loads(row["translations_json"])
+                    if row:
+                        tr = {}
+                        if row["translations_json"]:
+                            try:
+                                tr = json.loads(row["translations_json"])
+                            except Exception:
+                                tr = {}
                         if target_lang in tr:
                             del tr[target_lang]
-                            cursor.execute(
-                                "UPDATE terms SET translations_json = ?, confidence = 0.30 WHERE id = ?",
-                                (json.dumps(tr, ensure_ascii=False), row["id"])
-                            )
+                        cursor.execute(
+                            "UPDATE terms SET translations_json = ?, confidence = 0.30, updated_at = ? WHERE id = ?",
+                            (json.dumps(tr, ensure_ascii=False), now, row["id"])
+                        )
+                    else:
+                        new_id = str(uuid.uuid4())
+                        cursor.execute("""
+                            INSERT OR IGNORE INTO terms (
+                                id, tenant_id, source_term, domain, definition,
+                                translations_json, version, confidence, status, created_at, updated_at
+                            ) VALUES (?, 'default_org', ?, ?, '', '{}', 1, 0.30, 'APPROVED', ?, ?)
+                        """, (new_id, clean_term, item_domain, now, now))
 
     def _apply_human_corrections_to_queued(
         self,

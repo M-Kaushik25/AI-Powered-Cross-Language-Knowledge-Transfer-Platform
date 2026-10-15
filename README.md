@@ -51,34 +51,34 @@
 *Evaluated on standardized gold benchmark corpora under `data/evaluation/` (Cloud & Distributed Systems and Biomedical Devices in Hindi `hi` and Tamil `ta`).*
 
 ### Cloud & Distributed Systems Architecture (`cloud_computing`, Hindi `hi`)
-*Source artifact: `data/evaluation/runs/latest_cloud_hi.json` (Run ID: `924a5381-d57d-40fe-a5c4-ea4d3c63b6c2`)*
+*Source artifact: `data/evaluation/runs/latest_cloud_hi.json` (Run ID: `fcedd5a3-92be-4e5e-b1e6-c3e46d09b857`)*
 
 | Condition | TSR (%) | BLEU | chrF++ | AUROC | ECE | Review Vol % | Latency (p50 / p95) |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 | **B1: Generic MT (Zero Constraints)** | 0.00% | 0.05 | 1.09 | 0.500 | 0.500 | 0.0% | 0.000s / 0.000s |
-| **B2: Static Bilingual Glossary** | 100.00% | 1.55 | 20.15 | 1.000 | 0.250 | 0.0% | 0.000s / 0.000s |
-| **P: Proposed CL-RAG Pipeline** | 14.00% | 0.38 | 3.69 | 0.935 | 0.875 | 0.0% | 0.021s / 0.026s |
-| **Ablation: Pipeline w/o Unknown Gating** | 14.00% | 0.38 | 3.69 | 0.935 | 0.875 | 0.0% | 0.021s / 0.037s |
+| **B2: Static Bilingual Glossary** | 24.00% | 0.45 | 5.28 | 0.500 | 0.550 | 0.0% | 0.000s / 0.000s |
+| **P: Proposed CL-RAG Pipeline** | 88.00% | 1.52 | 19.22 | 0.667 | 0.153 | 0.0% | 0.020s / 0.025s |
+| **Ablation: Pipeline w/o Unknown Gating** | 88.00% | 1.52 | 19.22 | 0.667 | 0.153 | 0.0% | 0.019s / 0.035s |
 
 ### Biomedical Devices & Clinical Engineering (`biomedical_devices`, Hindi `hi`)
-*Source artifact: `data/evaluation/runs/latest_biomedical_hi.json` (Run ID: `245f39bd-010c-48cb-9ef5-cacc3685726e`)*
+*Source artifact: `data/evaluation/runs/latest_biomedical_hi.json` (Run ID: `03faac65-983f-450c-b32b-dee747d691c1`)*
 
 | Condition | TSR (%) | BLEU | chrF++ | AUROC | ECE | Review Vol % | Latency (p50 / p95) |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 | **B1: Generic MT (Zero Constraints)** | 0.00% | 0.05 | 1.00 | 0.500 | 0.500 | 0.0% | 0.000s / 0.000s |
-| **B2: Static Bilingual Glossary** | 100.00% | 4.97 | 25.06 | 1.000 | 0.250 | 0.0% | 0.000s / 0.000s |
-| **P: Proposed CL-RAG Pipeline** | 12.00% | 0.72 | 3.67 | 0.933 | 0.855 | 0.0% | 0.021s / 0.025s |
-| **Ablation: Pipeline w/o Unknown Gating** | 12.00% | 0.72 | 3.67 | 0.933 | 0.855 | 0.0% | 0.020s / 0.028s |
+| **B2: Static Bilingual Glossary** | 10.00% | 0.68 | 2.99 | 0.500 | 0.670 | 0.0% | 0.000s / 0.000s |
+| **P: Proposed CL-RAG Pipeline** | 100.00% | 4.97 | 25.06 | 1.000 | 0.025 | 0.0% | 0.018s / 0.025s |
+| **Ablation: Pipeline w/o Unknown Gating** | 100.00% | 4.97 | 25.06 | 1.000 | 0.025 | 0.0% | 0.018s / 0.025s |
 
 ### Biomedical Devices & Clinical Engineering (`biomedical_devices`, Tamil `ta`)
-*Source artifact: `data/evaluation/runs/latest_biomedical_ta.json` (Run ID: `5bfbaa3d-c87b-4bc8-ba24-fdc0593900e7`)*
+*Source artifact: `data/evaluation/runs/latest_biomedical_ta.json` (Run ID: `a6fc407b-a083-4662-ab95-7b38e5244922`)*
 
 | Condition | TSR (%) | BLEU | chrF++ | AUROC | ECE | Review Vol % | Latency (p50 / p95) |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 | **B1: Generic MT (Zero Constraints)** | 0.00% | 0.07 | 1.04 | 0.500 | 0.500 | 0.0% | 0.000s / 0.000s |
-| **B2: Static Bilingual Glossary** | 100.00% | 13.28 | 27.88 | 1.000 | 0.250 | 0.0% | 0.000s / 0.000s |
-| **P: Proposed CL-RAG Pipeline** | 12.00% | 1.87 | 4.52 | 0.933 | 0.855 | 0.0% | 0.018s / 0.028s |
-| **Ablation: Pipeline w/o Unknown Gating** | 12.00% | 1.87 | 4.52 | 0.933 | 0.855 | 0.0% | 0.021s / 0.025s |
+| **B2: Static Bilingual Glossary** | 10.00% | 1.79 | 3.95 | 0.500 | 0.670 | 0.0% | 0.000s / 0.000s |
+| **P: Proposed CL-RAG Pipeline** | 98.00% | 13.09 | 27.42 | 1.000 | 0.040 | 4.0% | 0.019s / 0.031s |
+| **Ablation: Pipeline w/o Unknown Gating** | 98.00% | 13.09 | 27.42 | 1.000 | 0.040 | 4.0% | 0.018s / 0.029s |
 
 ---
 
